@@ -178,7 +178,7 @@ class PythonVersionsSpec(MultiformatSerializableMixin):
             the provided mapping values.
         """
         if data is None:
-            raise ValueError("Mapping data must be provided to construct a PythonVersionsSpec")
+            return cls()
         return cls(
             min=str(data.get("min")),
             max=str(data.get("max")),

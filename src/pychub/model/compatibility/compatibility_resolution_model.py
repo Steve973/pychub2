@@ -278,7 +278,7 @@ class ResolvedWheelNode(MultiformatSerializableMixin, MultiformatDeserializableM
             "version": self.version,
             "requires_python": self.requires_python,
             "requires_dist": sorted(self.requires_dist),
-            "dependencies": [dep.to_mapping for dep in sorted(self.dependencies)],
+            "dependencies": [dep.to_mapping() for dep in sorted(self.dependencies)],
             "tag_urls": dict(self.tag_urls) if self.tag_urls is not None else None,
         }
 
@@ -315,7 +315,7 @@ class ResolvedWheelNode(MultiformatSerializableMixin, MultiformatDeserializableM
         """
         deps_iter = mapping.get("dependencies") or []
         deps = frozenset(WheelKey.from_mapping(d) for d in deps_iter)
-        requires_dist = mapping.get("requires_dist") or frozenset()
+        requires_dist = frozenset(str(rd) for rd in mapping.get("requires_dist")) or frozenset()
         tag_urls_raw = mapping.get("tag_urls")
         tag_urls = dict(tag_urls_raw) if tag_urls_raw is not None else None
         return cls(

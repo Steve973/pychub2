@@ -138,7 +138,7 @@ class ArtifactResolutionStrategyConfig(MultiformatSerializableMixin, Multiformat
 class Pep691SimpleApiMetadataStrategyConfig(ArtifactResolutionStrategyConfig):
     name: str = field(default="pep691-simple-api-pypi")
     precedence: int = field(default=50)
-    strategy_type = StrategyType.CANDIDATE_METADATA
+    strategy_type: StrategyType = field(default=StrategyType.CANDIDATE_METADATA)
     strategy_subtype: str = field(default="pep691_simple_api")
     base_simple_url: str = field(default="https://pypi.org/simple")
     request_headers: dict[str, str] = field(default_factory=_default_request_headers)
@@ -163,7 +163,7 @@ class Pep691SimpleApiMetadataStrategyConfig(ArtifactResolutionStrategyConfig):
 class WheelInspectionMetadataStrategyConfig(ArtifactResolutionStrategyConfig):
     name: str = field(default="wheel-inspection-metadata")
     precedence: int = field(default=90)
-    strategy_type = StrategyType.DEPENDENCY_METADATA
+    strategy_type: StrategyType = field(default=StrategyType.DEPENDENCY_METADATA)
     strategy_subtype: str = field(default="wheel_inspection")
 
     def to_mapping(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
@@ -183,7 +183,7 @@ class WheelInspectionMetadataStrategyConfig(ArtifactResolutionStrategyConfig):
 class FilesystemWheelStrategyConfig(ArtifactResolutionStrategyConfig):
     name: str = field(default="filesystem-wheel-local")
     precedence: int = field(default=50)
-    strategy_type = StrategyType.WHEEL_FILE
+    strategy_type: StrategyType = field(default=StrategyType.WHEEL_FILE)
     strategy_subtype: str = field(default="filesystem_wheel")
     supported_schemes: Sequence[str] = field(default_factory=_default_fs_schemes)
 
@@ -203,7 +203,7 @@ class FilesystemWheelStrategyConfig(ArtifactResolutionStrategyConfig):
 class HttpWheelStrategyConfig(ArtifactResolutionStrategyConfig):
     name: str = field(default="http-wheel-index")
     precedence: int = field(default=40)
-    strategy_type = StrategyType.WHEEL_FILE
+    strategy_type: StrategyType = field(default=StrategyType.WHEEL_FILE)
     strategy_subtype: str = field(default="https_wheel")
     supported_schemes: Sequence[str] = field(default_factory=_default_http_schemes)
 
