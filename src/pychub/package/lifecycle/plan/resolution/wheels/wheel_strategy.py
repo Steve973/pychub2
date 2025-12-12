@@ -2,16 +2,24 @@ from __future__ import annotations
 
 import shutil
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Sequence, ClassVar, Any
+from typing import Sequence, ClassVar
+from typing import cast, Any
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
-from pychub.model.compatibility.artifact_resolution_strategy_config_model import StrategyType, HttpWheelStrategyConfig, \
-    FilesystemWheelStrategyConfig
+from pychub.helper.strategy_loader import load_strategies_base
 from pychub.package.lifecycle.plan.resolution.artifact_resolution_strategy import ArtifactResolutionStrategy
+from pychub.package.lifecycle.plan.resolution.resolution_config_model import StrategyType, \
+    FilesystemWheelStrategyConfig, HttpWheelStrategyConfig
+
+ENTRYPOINT_GROUP = "pychub.wheel_resolution_strategies"
+PACKAGE_NAME = __name__.rsplit(".", 1)[0]
+
+# name -> (class object, fully qualified class name)
+_WHEEL_STRATEGY_REGISTRY: dict[str, tuple[type[WheelResolutionStrategy], str]] = {}
 
 
 def _default_fs_schemes() -> tuple[str, ...]:
@@ -170,8 +178,8 @@ class FilesystemWheelStrategy(WheelResolutionStrategy):
 
     @classmethod
     def _config_from_mapping(
-        cls,
-        mapping: Mapping[str, Any]) -> FilesystemWheelStrategyConfig:
+            cls,
+            mapping: Mapping[str, Any]) -> FilesystemWheelStrategyConfig:
         return FilesystemWheelStrategyConfig.from_mapping(mapping)
 
 
@@ -259,6 +267,55 @@ class HttpWheelStrategy(WheelResolutionStrategy):
 
     @classmethod
     def _config_from_mapping(
-        cls,
-        mapping: Mapping[str, Any]) -> HttpWheelStrategyConfig:
+            cls,
+            mapping: Mapping[str, Any]) -> HttpWheelStrategyConfig:
         return HttpWheelStrategyConfig.from_mapping(mapping)
+
+
+def _register_wheel_strategies(strategies: Iterable[WheelResolutionStrategy]) -> None:
+    """
+    Populate the name->type and name->fqcn registries from concrete strategy instances.
+    """
+    for strategy in strategies:
+        cls = type(strategy)
+        name = getattr(strategy, "name", None)
+        if not name:
+            continue
+        fqcn = f"{cls.__module__}.{cls.__qualname__}"
+        _WHEEL_STRATEGY_REGISTRY[name] = (cls, fqcn)
+
+
+def wheel_strategy_from_mapping(mapping: Mapping[str, Any]) -> WheelResolutionStrategy:
+    return WheelResolutionStrategy.from_mapping(mapping)
+
+
+def get_wheel_strategy_type(name: str) -> type[WheelResolutionStrategy] | None:
+    info = _WHEEL_STRATEGY_REGISTRY.get(name)
+    return info[0] if info is not None else None
+
+
+def get_wheel_strategy_fqcn(name: str) -> str | None:
+    info = _WHEEL_STRATEGY_REGISTRY.get(name)
+    return info[1] if info is not None else None
+
+
+def get_wheel_strategy_registry() -> dict[str, tuple[type[WheelResolutionStrategy], str]]:
+    # shallow copy to avoid outside mutation
+    return dict(_WHEEL_STRATEGY_REGISTRY)
+
+
+def load_wheel_resolution_strategies(
+        ordered_names: Iterable[str] | None = None,
+        precedence_overrides: Mapping[str, int] | None = None) -> list[WheelResolutionStrategy]:
+    """
+    Load all registered wheel metadata strategies, ordered by precedence,
+    optionally constrained / reordered by name or overridden precedence.
+    """
+    strategies = load_strategies_base(
+        base=WheelResolutionStrategy,
+        package_name=PACKAGE_NAME,
+        entrypoint_group=ENTRYPOINT_GROUP,
+        ordered_names=ordered_names,
+        precedence_overrides=precedence_overrides)
+    _register_wheel_strategies(strategies)
+    return cast(list[WheelResolutionStrategy], strategies)

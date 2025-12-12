@@ -8,12 +8,11 @@ from pathlib import Path
 
 from appdirs import user_cache_dir
 
-from pychub.model.build_lifecycle.build_event import audit, BuildEvent, StageType, EventType
-from pychub.model.project.chubproject_model import ChubProject
-from pychub.model.project.chubproject_provenance_model import SourceKind
 from pychub.package.cli import parse_cli
 from pychub.package.constants import CHUBPROJECT_FILENAME
 from pychub.package.context_vars import current_build_plan
+from pychub.package.domain.project_model import ChubProject, SourceKind
+from pychub.package.lifecycle.audit.build_event_model import audit, BuildEvent, StageType, EventType
 from pychub.package.lifecycle.init import immediate_operations
 from pychub.package.lifecycle.init.project.project_file_analysis import analyze_project
 

@@ -8,7 +8,7 @@ from typing import cast
 import httpx
 
 from pychub.helper.strategy_loader import load_strategies_base
-from pychub.model.compatibility.compatibility_spec_model import PythonVersionsSpec
+from pychub.package.domain.compatibility_model import PythonVersionsSpec
 
 _HTTP_TIMEOUT_SECONDS = 10.0
 ENTRYPOINT_GROUP = "pychub.model.compatibility.version_discovery"

@@ -4,9 +4,8 @@ from collections.abc import Mapping
 from packaging.tags import Tag, parse_tag
 from packaging.version import Version
 
-from pychub.model.compatibility.compatibility_spec_model import AbiValuesSpec, PlatformOSSpec, \
-    PlatformFamilySpec
 from pychub.package.context_vars import current_build_plan
+from pychub.package.domain.compatibility_model import AbiValuesSpec, PlatformOSSpec, PlatformFamilySpec
 
 # ---------------------------------------------------------------------------
 # Helpers for platform tag parsing

@@ -1,29 +1,29 @@
 from __future__ import annotations
 
-import datetime
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from importlib.metadata import version as get_version
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from appdirs import user_cache_dir
 
+from pychub.helper.multiformat_deserializable_mixin import MultiformatDeserializableMixin
 from pychub.helper.multiformat_serializable_mixin import MultiformatSerializableMixin
-from pychub.model.packaging.includes_model import Includes
-from pychub.model.packaging.scripts_model import Scripts
-from pychub.model.packaging.wheels_model import WheelCollection
-from pychub.model.project.chubproject_model import ChubProject
 from pychub.package.constants import CHUB_INCLUDES_DIR, CHUB_SCRIPTS_DIR, RUNTIME_DIR, CHUB_BUILD_DIR, CHUB_LIBS_DIR, \
     CHUBCONFIG_FILENAME, CHUB_WHEELS_DIR
-from .build_event import BuildEvent
-from ..compatibility.compatibility_spec_model import CompatibilitySpec
-from ...helper.multiformat_deserializable_mixin import MultiformatDeserializableMixin
-from ...package.lifecycle.plan.resolution.metadata.metadata_resolver import MetadataResolver
-from ...package.lifecycle.plan.resolution.wheels.wheel_resolver import WheelResolver
+from pychub.package.domain.artifacts_model import WheelCollection, Scripts, Includes
+from pychub.package.domain.compatibility_model import CompatibilitySpec
+from pychub.package.domain.project_model import ChubProject
+from pychub.package.lifecycle.audit.build_event_model import BuildEvent
+
+if TYPE_CHECKING:
+    from pychub.package.lifecycle.plan.resolution.metadata.metadata_resolver import MetadataResolver
+    from pychub.package.lifecycle.plan.resolution.wheels.wheel_resolver import WheelResolver
 
 
-@dataclass(slots=True, frozen=False, kw_only=True)
+@dataclass(frozen=False, kw_only=True)
 class BuildPlan(MultiformatSerializableMixin, MultiformatDeserializableMixin):
     """
     Represents a build plan for a Chub project, which organizes various configurations,
@@ -64,7 +64,7 @@ class BuildPlan(MultiformatSerializableMixin, MultiformatDeserializableMixin):
     # The compatibility evaluator used to evaluate the compatibility of wheels based on the compatibility spec
     compatibility_spec: CompatibilitySpec | None = None
     # When the build plan was created
-    created_at: datetime.datetime = field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     # Included files to be staged in the build
     include_files: Includes = field(default_factory=Includes)
     # Scripts to be staged in the build
@@ -124,8 +124,8 @@ class BuildPlan(MultiformatSerializableMixin, MultiformatDeserializableMixin):
             audit_log=list(mapping.get("audit_log", [])),
             cache_root=Path(mapping.get("cache_root", str(user_cache_dir("pychub")))),
             compatibility_spec=CompatibilitySpec.from_mapping(mapping.get("compatibility_spec", {})),
-            created_at=datetime.datetime.fromisoformat(
-                mapping.get("created_at", datetime.datetime.now(datetime.timezone.utc).isoformat())),
+            created_at=datetime.fromisoformat(
+                mapping.get("created_at", datetime.now(timezone.utc).isoformat())),
             include_files=Includes.from_mapping(mapping.get("include_files", {})),
             install_scripts=Scripts.from_mapping(mapping.get("install_scripts", {})),
             metadata=dict(mapping.get("metadata") or {}),
@@ -215,7 +215,7 @@ class BuildPlan(MultiformatSerializableMixin, MultiformatDeserializableMixin):
             'audit_log': (list, 'audit_log list[BuildEvent]'),
             'cache_root': (Path, 'cache_root Path'),
             'compatibility_spec': (CompatibilitySpec, 'compatibility_spec CompatibilitySpec'),
-            'created_at': (datetime.datetime, 'created_at datetime'),
+            'created_at': (datetime, 'created_at datetime'),
             'include_files': (Includes, 'include_files Includes'),
             'install_scripts': (Scripts, 'install_scripts Scripts'),
             'metadata': (dict, 'metadata dict'),

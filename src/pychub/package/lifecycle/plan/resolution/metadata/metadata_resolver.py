@@ -6,13 +6,11 @@ from typing import Any
 
 from pychub.helper.multiformat_deserializable_mixin import MultiformatDeserializableMixin
 from pychub.helper.multiformat_serializable_mixin import MultiformatSerializableMixin
-from pychub.model.caching.metadata_cache_index_model import MetadataCacheModel
-from pychub.model.compatibility.compatibility_resolution_model import WheelKey
-from pychub.model.compatibility.pep658_metadata_model import Pep658Metadata
-from pychub.model.compatibility.pep691_metadata_model import Pep691Metadata
-from pychub.model.compatibility.resolver_config_model import MetadataResolverConfig
-from pychub.package.lifecycle.plan.resolution.metadata.metadata_source.base_metadata_strategy import \
+from pychub.package.domain.compatibility_model import WheelKey, Pep658Metadata, Pep691Metadata
+from pychub.package.lifecycle.plan.resolution.caching_model import MetadataCacheModel
+from pychub.package.lifecycle.plan.resolution.metadata.metadata_strategy import \
     BaseMetadataStrategy
+from pychub.package.lifecycle.plan.resolution.resolution_config_model import MetadataResolverConfig
 
 INDEX_FILENAME = ".metadata_index.json"
 
@@ -52,4 +50,4 @@ class MetadataResolver(MultiformatSerializableMixin, MultiformatDeserializableMi
 
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> MetadataResolver:
-        return cls(config=MetadataResolverConfig.from_mapping(mapping["config"]))
+        return cls(config=MetadataResolverConfig.from_mapping(mapping["config"]), strategies=[])

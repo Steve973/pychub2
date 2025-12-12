@@ -4,13 +4,133 @@ import re
 from argparse import Namespace
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from .chubproject_provenance_model import ProvenanceEvent, SourceKind, OperationKind
 from pychub.helper.multiformat_deserializable_mixin import MultiformatDeserializableMixin
 from pychub.helper.multiformat_serializable_mixin import MultiformatSerializableMixin
 from pychub.helper.toml_utils import dump_toml_to_str
+from pychub.package.domain.artifacts_model import Scripts
+
+
+@dataclass(slots=True, frozen=True)
+class ChubConfig(MultiformatSerializableMixin, MultiformatDeserializableMixin):
+    """
+    Represents the configuration for Chub with various fields and utilities for serialization,
+    deserialization, and validation.
+
+    This data class is designed to be immutable and uses slots for efficient attribute management.
+    It provides functionality to convert from and to a mapping and includes a validation method
+    to ensure that configuration data conforms to expected constraints.
+
+    Attributes:
+        name (str): The name of the configuration.
+        version (str): The version of the configuration.
+        entrypoint (str | None): The entrypoint, if specified, as a string.
+        includes (list[str]): A list of included items.
+        scripts (Scripts): An instance representing scripts configuration.
+        pinned_wheels (list[str]): A list of pinned dependency wheel strings in the format "name==version".
+        targets (list[str]): A list of target strings.
+        metadata (dict[str, Any]): Metadata associated with the configuration.
+    """
+    name: str
+    version: str
+    entrypoint: str | None = None
+    includes: list[str] = field(default_factory=list)
+    scripts: Scripts = field(default_factory=Scripts)
+    pinned_wheels: list[str] = field(default_factory=list)
+    targets: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> ChubConfig:
+        """
+        Creates an instance of ChubConfig from a provided mapping. The method extracts
+        required fields from the given mapping to initialize a ChubConfig object. It
+        also validates the created configuration before returning it.
+
+        Args:
+            mapping (Mapping[str, Any]): A dictionary-like object containing
+                configuration data. It may include the following keys:
+                - "name": The name of the configuration as a string.
+                - "version": The version of the configuration as a string.
+                - "entrypoint": An optional entrypoint destination as a string.
+                - "includes": A list of strings to specify included items.
+                - "scripts": Details of scripts, likely as a specific mapping.
+                - "pinned_wheels": A list of pinned dependency wheel strings.
+                - "targets": A list of target strings.
+                - "metadata": An optional dictionary with meta-information.
+            **_ (Any): Additional keyword arguments that are ignored.
+
+        Returns:
+            ChubConfig: A fully initialized and validated configuration object
+            representing the provided mapping.
+        """
+        name = str(mapping.get("name", "")).strip()
+        version = str(mapping.get("version", "")).strip()
+        entrypoint = mapping.get("entrypoint")
+        includes = [str(x) for x in (mapping.get("includes") or [])]
+        scripts = Scripts.from_mapping(mapping.get("scripts"))
+        pinned_wheels = [str(x) for x in (mapping.get("pinned_wheels") or [])]
+        targets = [str(x) for x in (mapping.get("targets") or [])]
+        metadata = dict(mapping.get("metadata") or {})
+
+        cfg = ChubConfig(
+            name=name,
+            version=version,
+            entrypoint=str(entrypoint) if entrypoint is not None else None,
+            includes=includes,
+            scripts=scripts,
+            pinned_wheels=pinned_wheels,
+            targets=targets,
+            metadata=metadata)
+        cfg.validate()
+        return cfg
+
+    def to_mapping(self) -> dict[str, Any]:
+        """
+        Converts the current object to a dictionary representation.
+
+        The function generates a dictionary containing key-value mappings of the object's
+        attributes and nested data structure transformations. It ensures that all
+        collections and attributes are converted into serializable or native Python
+        types wherever necessary.
+
+        Returns:
+            dict[str, Any]: A dictionary representation of the object's state,
+            including its attributes and nested structures.
+        """
+        return {
+            "name": self.name,
+            "version": self.version,
+            "entrypoint": self.entrypoint,
+            "scripts": self.scripts.to_mapping(),
+            "includes": list(self.includes),
+            "pinned_wheels": list(self.pinned_wheels),
+            "targets": list(self.targets),
+            "metadata": dict(self.metadata),
+        }
+
+    def validate(self) -> None:
+        """
+        Validates the properties of an object to ensure they conform to expected formats and constraints.
+
+        Raises:
+            ValueError: If any of the required attributes `name`, `version`, or `pinned_wheels`
+                do not fulfill their expected values or formats.
+        """
+        if not self.name:
+            raise ValueError("name is required")
+        if not self.version:
+            raise ValueError("version is required")
+        for pinned_wheel in self.pinned_wheels:
+            dep_parts = pinned_wheel.split("==")
+            if len(dep_parts) != 2:
+                raise ValueError(f"pinned wheel must be in the format 'name==ver': {pinned_wheel}")
+        # Keep the entrypoint a single token, and actual arg parsing happens at run.
+        if self.entrypoint and (" " in self.entrypoint):
+            raise ValueError("entrypoint must be a single token")
 
 
 def _normalize_str_list(value: Any) -> list[str]:
@@ -249,7 +369,7 @@ class ChubProjectError(Exception):
     pass
 
 
-@dataclass(slots=True)
+@dataclass(kw_only=True)
 class ChubProject(MultiformatSerializableMixin, MultiformatDeserializableMixin):
     """
     Represents a Chub project configuration, including attributes for identity, behavior,
@@ -319,12 +439,12 @@ class ChubProject(MultiformatSerializableMixin, MultiformatDeserializableMixin):
 
     @classmethod
     def _preprocess_mapping(
-        cls,
-        mapping: Mapping[str, Any],
-        *,
-        fmt: str,
-        path: Path | None,
-        **_: Any) -> Mapping[str, Any]:
+            cls,
+            mapping: Mapping[str, Any],
+            *,
+            fmt: str,
+            path: Path | None,
+            **_: Any) -> Mapping[str, Any]:
         """
         Preprocesses and validates a mapping based on the specified format and optional path input.
         If the format is "toml", it attempts to extract a specific package configuration from the given mapping.
@@ -733,3 +853,112 @@ class ChubProject(MultiformatSerializableMixin, MultiformatDeserializableMixin):
         text = dump_toml_to_str(_coerce_toml_value(obj))
         p.write_text(text, encoding="utf-8")
         return p
+
+
+class SourceKind(str, Enum):
+    """
+    Enumeration for the different kinds of sources.
+
+    Represents the various sources from which operations or data may be
+    derived. Useful for differentiating between input methods, testing
+    scenarios, and default configurations.
+
+    Attributes:
+        CLI (str): Represents input or actions derived from a command-line interface.
+        FILE (str): Represents input or actions derived from a file source.
+        MAPPING (str): Represents input or actions derived from a mapping object.
+        TEST (str): Represents input or actions derived from testing mechanisms.
+        DEFAULT (str): Represents input or actions derived from default configurations.
+    """
+    CLI = "cli"
+    FILE = "file"
+    MAPPING = "mapping"
+    TEST = "test"
+    DEFAULT = "default"
+
+
+class OperationKind(str, Enum):
+    """
+    Represents the kinds of operations as an enumeration.
+
+    This class defines various kinds of operations that can be performed.
+    Used primarily for categorization and identification of specific
+    operations in the system.
+
+    Attributes:
+        INIT (str): Represents an initialization operation type.
+        MERGE_EXTEND (str): Represents an operation where merging extends
+            current data or configuration.
+        MERGE_OVERRIDE (str): Represents an operation where merging overrides
+            current data or configuration.
+    """
+    INIT = "init"
+    MERGE_EXTEND = "merge_extend"
+    MERGE_OVERRIDE = "merge_override"
+
+
+@dataclass(slots=True)
+class ProvenanceEvent(MultiformatSerializableMixin, MultiformatDeserializableMixin):
+    """
+    Represents an event detailing its origin, the operation it performs, and additional related details.
+
+    This class is designed to provide a structured representation of an event that captures its source,
+    operation, and related contextual details. It supports serialization and deserialization to and from
+    various formats for ease of data exchange and storage.
+
+    Attributes:
+        source (SourceKind): The origin or source of the event, categorized by its kind.
+        operation (OperationKind): The type of operation or action associated with the event.
+        details (dict[str, Any]): Additional contextual information or metadata related to the event.
+    """
+    source: SourceKind
+    operation: OperationKind
+    details: dict[str, Any] = field(default_factory=dict)
+
+    def to_mapping(self) -> Mapping[str, Any]:
+        """
+        Converts an object instance into a dictionary mapping.
+
+        The method returns a dictionary representation of the object's attributes,
+        with keys representing attribute names and values as the corresponding
+        attribute values. This is useful for serializing or processing the object
+        data in a uniform manner.
+
+        Returns:
+            Mapping[str, Any]: A dictionary mapping of object attributes to their
+            respective values.
+        """
+        return {
+            "source": self.source.value,
+            "operation": self.operation.value,
+            "details": self.details,
+        }
+
+    @classmethod
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> ProvenanceEvent:
+        """
+        Creates an instance of ProvenanceEvent from the provided mapping and additional arguments.
+
+        This class method validates the 'details' field in the mapping to ensure it is a dictionary.
+        If the validation succeeds, it creates and returns a ProvenanceEvent instance using the provided
+        mapping data.
+
+        Args:
+            mapping (Mapping[str, Any]): A mapping containing the fields required for constructing
+                a ProvenanceEvent, including 'source', 'operation', and 'details'.
+            **_ (Any): Additional arguments that are ignored but allowed for compatibility.
+
+        Returns:
+            ProvenanceEvent: An instance of the ProvenanceEvent class constructed using the data
+            provided in the mapping.
+
+        Raises:
+            TypeError: If the 'details' field in the provided mapping is not a dictionary.
+        """
+        details_obj = mapping.get("details") or {}
+        if not isinstance(details_obj, dict):
+            raise TypeError(f"Expected 'details' to be a mapping, got {type(details_obj)!r}")
+        return ProvenanceEvent(
+            source=SourceKind(mapping.get("source")),
+            operation=OperationKind(mapping.get("operation")),
+            details=details_obj)

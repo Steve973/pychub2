@@ -3,11 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from pychub.helper.toml_utils import load_toml_file
-from pychub.model.build_lifecycle import BuildEvent
-from pychub.model.build_lifecycle.build_event import audit, StageType, EventType, LevelType
 from pychub.package.context_vars import current_build_plan
-from pychub.package.lifecycle.init.project.pathdeps.project_path_strategy_base import ProjectPathStrategy
-from pychub.package.lifecycle.init.project.pathdeps.project_path_strategy_registry import load_strategies
+from pychub.package.lifecycle.audit.build_event_model import audit, StageType, EventType, LevelType, BuildEvent
+from pychub.package.lifecycle.init.project.project_path_strategy import ProjectPathStrategy, load_strategies
 
 
 @audit(StageType.INIT, substage="collect_path_dependency_wheel_locations")
@@ -124,4 +122,5 @@ def collect_path_dependencies(
 def analyze_project():
     build_plan = current_build_plan.get()
     path_deps = collect_path_dependencies(build_plan.project_dir / "pyproject.toml")
-    build_plan.path_dep_wheel_locations = collect_path_dependency_wheel_locations(path_deps - {build_plan.project_dir})
+    path_dep_wheel_locations = collect_path_dependency_wheel_locations(path_deps - {build_plan.project_dir})
+    build_plan.path_dep_wheel_locations.update(path_dep_wheel_locations)

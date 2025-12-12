@@ -2,8 +2,8 @@ import logging
 import sys
 from pathlib import Path
 
-from pychub.model.build_lifecycle.build_event import BuildEvent
-from pychub.model.build_lifecycle.buildplan_model import BuildPlan
+from pychub.package.domain.buildplan_model import BuildPlan
+from pychub.package.lifecycle.audit.build_event_model import BuildEvent
 
 _LOG_FILE_NAME = "build.audit.json"
 

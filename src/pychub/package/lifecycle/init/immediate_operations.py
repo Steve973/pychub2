@@ -2,8 +2,8 @@ import sys
 from importlib.metadata import PackageNotFoundError, version as get_version
 from pathlib import Path
 
-from pychub.model.build_lifecycle.build_event import audit, StageType
-from pychub.model.project.chubproject_model import ChubProject
+from pychub.package.domain.project_model import ChubProject
+from pychub.package.lifecycle.audit.build_event_model import StageType, audit
 
 
 @audit(StageType.EXECUTE, substage="execute_analyze_compatibility")

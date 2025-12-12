@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from pychub.model.compatibility.compatibility_resolution_model import WheelKey
-from pychub.model.compatibility.compatibility_spec_model import CompatibilitySpec
 from pychub.package.context_vars import current_build_plan
+from pychub.package.domain.buildplan_model import BuildPlan
+from pychub.package.domain.compatibility_model import WheelKey, CompatibilitySpec
+from pychub.package.domain.project_model import ChubProject
+from pychub.package.lifecycle.plan.compatibility.compatibility_spec_loader import load_compatibility_spec
 from pychub.package.lifecycle.plan.compatibility.python_version_discovery import list_available_python_versions_for_spec
-from pychub.package.lifecycle.plan.compatibility.spec.compatibility_spec_loader import load_compatibility_spec
 
 
 def build_dependency_metadata_tree() -> None:
@@ -63,9 +64,9 @@ def init_compatibility_for_plan() -> CompatibilitySpec:
         CompatibilitySpec: The compatibility specification corresponding to the
         current build plan's project.
     """
-    build_plan = current_build_plan.get()
-    chubproject = build_plan.project
-    spec = load_compatibility_spec(chubproject)
+    build_plan: BuildPlan = current_build_plan.get()
+    chubproject: ChubProject = build_plan.project
+    spec: CompatibilitySpec = load_compatibility_spec(chubproject)
     build_plan.compatibility_spec = spec
     build_plan.resolved_python_versions = list_available_python_versions_for_spec(spec.python_versions_spec)
     return spec

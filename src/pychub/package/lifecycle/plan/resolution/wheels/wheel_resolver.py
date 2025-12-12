@@ -12,13 +12,12 @@ from packaging.utils import parse_wheel_filename
 
 from pychub.helper.multiformat_deserializable_mixin import MultiformatDeserializableMixin
 from pychub.helper.multiformat_serializable_mixin import MultiformatSerializableMixin
-from pychub.model.caching.wheel_cache_index_model import WheelCacheIndexModel, WheelCacheModel, create_key
-from pychub.model.compatibility.compatibility_resolution_model import WheelKey
-from pychub.model.compatibility.pep691_metadata_model import Pep691Metadata, Pep691FileMetadata
-from pychub.model.compatibility.resolver_config_model import WheelResolverConfig
 from pychub.package.context_vars import current_build_plan
+from pychub.package.domain.compatibility_model import WheelKey, Pep691Metadata, Pep691FileMetadata
+from pychub.package.lifecycle.plan.resolution.caching_model import WheelCacheModel, create_key, WheelCacheIndexModel
 from pychub.package.lifecycle.plan.resolution.metadata.metadata_resolver import MetadataResolver
-from pychub.package.lifecycle.plan.resolution.wheels.wheel_source.wheel_resolution_strategy import \
+from pychub.package.lifecycle.plan.resolution.resolution_config_model import WheelResolverConfig
+from pychub.package.lifecycle.plan.resolution.wheels.wheel_strategy import \
     WheelResolutionStrategy
 
 WHEEL_SUBDIR = "wheels"

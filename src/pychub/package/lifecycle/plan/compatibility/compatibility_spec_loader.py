@@ -6,10 +6,10 @@ from pathlib import Path
 from typing import Any
 
 from pychub.helper.toml_utils import load_toml_text
-from pychub.model.build_lifecycle.build_event import BuildEvent, StageType, EventType, LevelType
-from pychub.model.project.chubproject_model import ChubProject
-from pychub.model.compatibility.compatibility_spec_model import CompatibilitySpec
 from pychub.package.context_vars import current_build_plan
+from pychub.package.domain.compatibility_model import CompatibilitySpec
+from pychub.package.domain.project_model import ChubProject
+from pychub.package.lifecycle.audit.build_event_model import BuildEvent, StageType, EventType, LevelType
 
 _DEFAULT_SPEC_RESOURCE_PACKAGE = "pychub.package.lifecycle.plan.compatibility"
 _DEFAULT_SPEC_RESOURCE_NAME = "compatibility_spec.toml"

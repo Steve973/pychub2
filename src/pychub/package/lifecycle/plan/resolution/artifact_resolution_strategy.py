@@ -5,7 +5,7 @@ from typing import Any, Generic, TypeVar
 
 from pychub.helper.multiformat_deserializable_mixin import MultiformatDeserializableMixin
 from pychub.helper.multiformat_serializable_mixin import MultiformatSerializableMixin
-from pychub.model.compatibility.artifact_resolution_strategy_config_model import ArtifactResolutionStrategyConfig
+from pychub.package.lifecycle.plan.resolution.resolution_config_model import ArtifactResolutionStrategyConfig
 
 TConfig = TypeVar("TConfig", bound=ArtifactResolutionStrategyConfig)
 TStrategy = TypeVar("TStrategy", bound="ArtifactResolutionStrategy[Any]")
