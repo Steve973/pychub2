@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from importlib.metadata import version as get_version
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import Any
 
 from appdirs import user_cache_dir
 
@@ -17,10 +17,6 @@ from pychub.package.domain.artifacts_model import WheelCollection, Scripts, Incl
 from pychub.package.domain.compatibility_model import CompatibilitySpec
 from pychub.package.domain.project_model import ChubProject
 from pychub.package.lifecycle.audit.build_event_model import BuildEvent
-
-if TYPE_CHECKING:
-    from pychub.package.lifecycle.plan.resolution.metadata.metadata_resolver import MetadataResolver
-    from pychub.package.lifecycle.plan.resolution.wheels.wheel_resolver import WheelResolver
 
 
 @dataclass(frozen=False, kw_only=True)
@@ -42,7 +38,6 @@ class BuildPlan(MultiformatSerializableMixin, MultiformatDeserializableMixin):
         include_files (Includes): Files included as part of the build staging area.
         install_scripts (Scripts): Installation scripts to be staged as part of the build.
         metadata (dict[str, Any]): Additional metadata associated with the build plan.
-        metadata_resolver (MetadataResolver): Configured metadata resolver for resolving
             project dependencies and metadata.
         path_dep_wheel_locations (set[Path]): Locations of wheel files derived from
             project path dependency analysis.
@@ -53,7 +48,6 @@ class BuildPlan(MultiformatSerializableMixin, MultiformatDeserializableMixin):
             used for staging organization.
         pychub_version (str): The version of Pychub used to create this build plan.
         resolved_python_versions (list[str]): Resolved Python versions for the project.
-        wheel_resolver (WheelResolver): Configured resolver for managing wheel files.
         wheels (WheelCollection): Collection of wheels to be included in the build.
     """
 
@@ -71,8 +65,6 @@ class BuildPlan(MultiformatSerializableMixin, MultiformatDeserializableMixin):
     install_scripts: Scripts = field(default_factory=Scripts)
     # Additional metadata for the build
     metadata: dict[str, Any] = field(default_factory=dict)
-    # The configured metadata resolver
-    metadata_resolver: MetadataResolver | None = None
     # Wheel files from project path dependency analysis
     path_dep_wheel_locations: set[Path] = field(default_factory=set)
     # The ChubProject definition
@@ -85,8 +77,6 @@ class BuildPlan(MultiformatSerializableMixin, MultiformatDeserializableMixin):
     pychub_version: str = field(default_factory=lambda: get_version("pychub"))
     # Resolved Python versions for the project
     resolved_python_versions: list[str] = field(default_factory=list)
-    # The configured wheel resolver
-    wheel_resolver: WheelResolver | None = None
     # Wheels to be staged in the build
     wheels: WheelCollection = field(default_factory=WheelCollection)
 
@@ -129,14 +119,12 @@ class BuildPlan(MultiformatSerializableMixin, MultiformatDeserializableMixin):
             include_files=Includes.from_mapping(mapping.get("include_files", {})),
             install_scripts=Scripts.from_mapping(mapping.get("install_scripts", {})),
             metadata=dict(mapping.get("metadata") or {}),
-            metadata_resolver=MetadataResolver.from_mapping(mapping.get("metadata_resolver", {})),
             path_dep_wheel_locations=set(mapping.get("path_dep_wheel_locations", [])),
             project=project,
             project_dir=Path(mapping.get("project_dir") or "."),
             project_hash=mapping.get("project_hash", ""),
             pychub_version=mapping.get("pychub_version", get_version("pychub")),
             resolved_python_versions=mapping.get("resolved_python_versions", []),
-            wheel_resolver=WheelResolver.from_mapping(mapping.get("wheel_resolver", {})),
             wheels=WheelCollection.from_mapping(mapping.get("wheels", [])))
 
     # ------------------------------------------------------------------ #
@@ -170,14 +158,12 @@ class BuildPlan(MultiformatSerializableMixin, MultiformatDeserializableMixin):
             "include_files": self.include_files.to_mapping(),
             "install_scripts": self.install_scripts.to_mapping(),
             "metadata": dict(self.metadata),
-            "metadata_resolver": self.metadata_resolver.to_mapping() if self.metadata_resolver is not None else {},
             "path_dep_wheel_locations": list(sorted(self.path_dep_wheel_locations)),
             "project": self.project.to_mapping(),
             "project_dir": str(self.project_dir),
             "project_hash": self.project_hash,
             "pychub_version": self.pychub_version,
             "resolved_python_versions": self.resolved_python_versions,
-            "wheel_resolver": self.wheel_resolver.to_mapping() if self.wheel_resolver is not None else {},
             "wheels": self.wheels.to_mapping(),
         }
         derived = {
@@ -219,14 +205,12 @@ class BuildPlan(MultiformatSerializableMixin, MultiformatDeserializableMixin):
             'include_files': (Includes, 'include_files Includes'),
             'install_scripts': (Scripts, 'install_scripts Scripts'),
             'metadata': (dict, 'metadata dict'),
-            'metadata_resolver': (MetadataResolver, 'metadata_resolver MetadataResolver'),
             'path_dep_wheel_locations': (set, 'path_dep_wheel_locations set[Path]'),
             'project': (ChubProject, 'ChubProject'),
             'project_dir': (Path, 'project_dir Path'),
             'project_hash': (str, 'project_hash str'),
             'pychub_version': (str, 'pychub_version str'),
             'resolved_python_versions': (list, 'resolved_python_versions list[str]'),
-            'wheel_resolver': (WheelResolver, 'wheel_resolver WheelResolver'),
             'wheels': (WheelCollection, 'wheels WheelCollection'),
         }
 

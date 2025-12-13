@@ -19,9 +19,10 @@ from packaging.version import Version, InvalidVersion
 from pychub.helper.multiformat_deserializable_mixin import MultiformatDeserializableMixin
 from pychub.helper.multiformat_serializable_mixin import MultiformatSerializableMixin
 from pychub.helper.toml_utils import dump_toml_to_str
+from pychub.package.domain.buildplan_model import BuildPlan
 
 if TYPE_CHECKING:
-    from pychub.package.context_vars import current_build_plan
+    from pychub.package.context_vars import current_packaging_context
 
 _MIN_PATTERN = re.compile(r"""
     ^\s*
@@ -557,7 +558,7 @@ class CompatibilitySpec(MultiformatSerializableMixin, MultiformatDeserializableM
     _tags_whitelist: set[Tag] = field(default_factory=set, repr=False)
 
     def __post_init__(self) -> None:
-        build_plan = current_build_plan.get()
+        build_plan: BuildPlan = current_packaging_context.get().build_plan
         spec_str = ",".join(f"=={v}" for v in build_plan.resolved_python_versions)
         self._py_bounds = SpecifierSet(spec_str)
         # Precompute explicit tag profiles from CompatibilityTagsSpec

@@ -12,7 +12,7 @@ from packaging.utils import parse_wheel_filename
 
 from pychub.helper.multiformat_deserializable_mixin import MultiformatDeserializableMixin
 from pychub.helper.multiformat_serializable_mixin import MultiformatSerializableMixin
-from pychub.package.context_vars import current_build_plan
+from pychub.package.context_vars import current_packaging_context
 from pychub.package.domain.compatibility_model import WheelKey, Pep691Metadata, Pep691FileMetadata
 from pychub.package.lifecycle.plan.resolution.caching_model import WheelCacheModel, create_key, WheelCacheIndexModel
 from pychub.package.lifecycle.plan.resolution.metadata.metadata_resolver import MetadataResolver
@@ -151,8 +151,7 @@ class WheelResolver(MultiformatSerializableMixin, MultiformatDeserializableMixin
             Path | None: Path to the wheel file if successfully resolved; otherwise,
             None.
         """
-        build_plan = current_build_plan.get()
-        metadata_resolver = build_plan.metadata_resolver
+        metadata_resolver = current_packaging_context.get().metadata_resolver
         if metadata_resolver is None:
             raise RuntimeError("MetadataResolver not initialized")
         uri = _resolve_uri_for_wheel_key(wheel_key, metadata_resolver)

@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from packaging.tags import Tag, parse_tag
 from packaging.version import Version
 
-from pychub.package.context_vars import current_build_plan
+from pychub.package.context_vars import current_packaging_context
 from pychub.package.domain.compatibility_model import AbiValuesSpec, PlatformOSSpec, PlatformFamilySpec
 
 # ---------------------------------------------------------------------------
@@ -190,7 +190,7 @@ def accept_interpreter(interpreter: str) -> bool:
     Returns:
         bool: True if the interpreter is accepted, False otherwise.
     """
-    build_plan = current_build_plan.get()
+    build_plan = current_packaging_context.get().build_plan
     spec = build_plan.compatibility_spec
     if spec is None:
         raise RuntimeError("CompatibilitySpec not initialized")
@@ -261,7 +261,7 @@ def accept_abi(abi: str) -> bool:
     Raises:
         RuntimeError: If the Python version bounds are not initialized.
     """
-    build_plan = current_build_plan.get()
+    build_plan = current_packaging_context.get().build_plan
     spec = build_plan.compatibility_spec
     if spec is None:
         raise RuntimeError("CompatibilitySpec not initialized")
@@ -328,7 +328,7 @@ def accept_platform(platform: str) -> bool:
         bool: True if the platform is accepted according to the specifications,
         False otherwise.
     """
-    build_plan = current_build_plan.get()
+    build_plan = current_packaging_context.get().build_plan
     spec = build_plan.compatibility_spec
     if spec is None:
         raise RuntimeError("CompatibilitySpec not initialized")
@@ -437,7 +437,7 @@ def evaluate_compatibility(tag_str: str) -> bool:
     Returns:
         bool: True if the tag string is considered compatible, False otherwise.
     """
-    build_plan = current_build_plan.get()
+    build_plan = current_packaging_context.get().build_plan
     spec = build_plan.compatibility_spec
     if spec is None:
         raise RuntimeError("CompatibilitySpec not initialized")

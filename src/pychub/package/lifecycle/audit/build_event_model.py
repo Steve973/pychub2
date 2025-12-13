@@ -11,7 +11,8 @@ from typing import Any, ParamSpec, TypeVar
 
 from pychub.helper.multiformat_deserializable_mixin import MultiformatDeserializableMixin
 from pychub.helper.multiformat_serializable_mixin import MultiformatSerializableMixin
-from pychub.package.context_vars import current_build_plan
+from pychub.package.context_vars import current_packaging_context
+from pychub.package.domain.buildplan_model import BuildPlan
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -162,7 +163,7 @@ def audit(stage: StageType, substage: str | None = None) -> Callable[[Callable[P
     def decorator(fn: Callable[P, R]) -> Callable[P, R]:
         @functools.wraps(fn)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            plan = current_build_plan.get()
+            plan: BuildPlan = current_packaging_context.get().build_plan
             if plan is None:
                 raise RuntimeError("No active BuildPlan in context for @audit-decorated function")
 

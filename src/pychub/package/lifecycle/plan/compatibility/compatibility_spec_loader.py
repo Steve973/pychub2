@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from pychub.helper.toml_utils import load_toml_text
-from pychub.package.context_vars import current_build_plan
+from pychub.package.context_vars import current_packaging_context
+from pychub.package.domain.buildplan_model import BuildPlan
 from pychub.package.domain.compatibility_model import CompatibilitySpec
 from pychub.package.domain.project_model import ChubProject
 from pychub.package.lifecycle.audit.build_event_model import BuildEvent, StageType, EventType, LevelType
@@ -200,7 +201,7 @@ def load_compatibility_spec(chubproject: ChubProject | None) -> CompatibilitySpe
     Raises:
         ValueError: If the combination strategy specified in the TOML file is invalid.
     """
-    build_plan = current_build_plan.get()
+    build_plan: BuildPlan = current_packaging_context.get().build_plan
     combine_strategy: str = "merge"
     user_spec_path: Path | None = None
     inline_overrides: Mapping[str, Any] | None = None

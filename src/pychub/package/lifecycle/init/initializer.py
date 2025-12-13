@@ -10,11 +10,16 @@ from appdirs import user_cache_dir
 
 from pychub.package.cli import parse_cli
 from pychub.package.constants import CHUBPROJECT_FILENAME
-from pychub.package.context_vars import current_build_plan
+from pychub.package.context_vars import current_packaging_context
 from pychub.package.domain.project_model import ChubProject, SourceKind
 from pychub.package.lifecycle.audit.build_event_model import audit, BuildEvent, StageType, EventType
 from pychub.package.lifecycle.init import immediate_operations
 from pychub.package.lifecycle.init.project.project_file_analysis import analyze_project
+from pychub.package.lifecycle.plan.resolution.metadata.metadata_resolver import MetadataResolver
+from pychub.package.lifecycle.plan.resolution.metadata.metadata_strategy import BaseMetadataStrategy
+from pychub.package.lifecycle.plan.resolution.resolution_config_model import WheelResolverConfig, MetadataResolverConfig
+from pychub.package.lifecycle.plan.resolution.wheels.wheel_resolver import WheelResolver
+from pychub.package.lifecycle.plan.resolution.wheels.wheel_strategy import WheelResolutionStrategy
 
 
 class ImmediateOutcome(Enum):
@@ -57,7 +62,7 @@ def check_immediate_operations(args: Namespace, chubproject: ChubProject) -> Imm
         the immediate operation. It could be EXIT, CONTINUE, or NONE, based
         on the action taken or if no action was performed.
     """
-    build_plan = current_build_plan.get()
+    build_plan = current_packaging_context.get().build_plan
     if args.analyze_compatibility:
         immediate_operations.execute_analyze_compatibility(chubproject)
         build_plan.audit_log.append(
@@ -99,7 +104,7 @@ def cache_project(chubproject: ChubProject) -> Path:
     Returns:
         Path: The path to the staging directory where the project cache is stored.
     """
-    build_plan = current_build_plan.get()
+    build_plan = current_packaging_context.get().build_plan
 
     # Ensure cache_root is set (falls back to user_cache_dir if still default)
     if not build_plan.cache_root:
@@ -179,6 +184,39 @@ def process_options(args: Namespace) -> ChubProject:
             details=cli_details)
 
 
+@audit(StageType.INIT, substage="init_wheel_resolver_strategies")
+def init_wheel_resolver_strategies() -> list[WheelResolutionStrategy]:
+    return []
+
+
+@audit(StageType.INIT, substage="init_metadata_resolver_strategies")
+def init_metadata_resolver_strategies() -> list[BaseMetadataStrategy]:
+    return []
+
+
+@audit(StageType.INIT, substage="init_wheel_resolver_config")
+def init_wheel_resolver_config() -> WheelResolverConfig:
+    return WheelResolverConfig.from_mapping({})
+
+
+@audit(StageType.INIT, substage="init_metadata_resolver_config")
+def init_metadata_resolver_config() -> MetadataResolverConfig:
+    return MetadataResolverConfig.from_mapping({})
+
+
+@audit(StageType.INIT, substage="init_wheel_resolver")
+def init_wheel_resolver() -> WheelResolver:
+    resolver_config = init_wheel_resolver_config()
+    resolver_strategies = init_wheel_resolver_strategies()
+    return WheelResolver(config=resolver_config, strategies=resolver_strategies)
+
+
+def init_metadata_resolver() -> MetadataResolver:
+    resolver_config = init_metadata_resolver_config()
+    resolver_strategies = init_metadata_resolver_strategies()
+    return MetadataResolver(config=resolver_config, strategies=resolver_strategies)
+
+
 @audit(StageType.INIT)
 def init_project(chubproject_path: Path | None = None) -> tuple[Path, ImmediateOutcome]:
     """
@@ -202,7 +240,7 @@ def init_project(chubproject_path: Path | None = None) -> tuple[Path, ImmediateO
         tuple[Path, ImmediateOutcome]: A tuple containing the path to the cached project
             and an indication if an immediate operation requires the process to exit.
     """
-    build_plan = current_build_plan.get()
+    build_plan = current_packaging_context.get().build_plan
     args = parse_cli()
     if chubproject_path:
         chubproject = process_chubproject(chubproject_path)

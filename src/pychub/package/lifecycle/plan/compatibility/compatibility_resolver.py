@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from pychub.package.context_vars import current_build_plan
-from pychub.package.domain.buildplan_model import BuildPlan
+from pychub.package.context_vars import current_packaging_context
 from pychub.package.domain.compatibility_model import WheelKey, CompatibilitySpec
 from pychub.package.domain.project_model import ChubProject
 from pychub.package.lifecycle.plan.compatibility.compatibility_spec_loader import load_compatibility_spec
@@ -64,7 +63,7 @@ def init_compatibility_for_plan() -> CompatibilitySpec:
         CompatibilitySpec: The compatibility specification corresponding to the
         current build plan's project.
     """
-    build_plan: BuildPlan = current_build_plan.get()
+    build_plan = current_packaging_context.get().build_plan
     chubproject: ChubProject = build_plan.project
     spec: CompatibilitySpec = load_compatibility_spec(chubproject)
     build_plan.compatibility_spec = spec
@@ -73,5 +72,5 @@ def init_compatibility_for_plan() -> CompatibilitySpec:
 
 
 def resolve_compatibility():
-    build_plan = current_build_plan.get()
+    build_plan = current_packaging_context.get().build_plan
     spec = init_compatibility_for_plan()

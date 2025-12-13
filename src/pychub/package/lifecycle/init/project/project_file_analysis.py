@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from pychub.helper.toml_utils import load_toml_file
-from pychub.package.context_vars import current_build_plan
+from pychub.package.context_vars import current_packaging_context
 from pychub.package.lifecycle.audit.build_event_model import audit, StageType, EventType, LevelType, BuildEvent
 from pychub.package.lifecycle.init.project.project_path_strategy import ProjectPathStrategy, load_strategies
 
@@ -25,7 +25,7 @@ def collect_path_dependency_wheel_locations(project_paths: set[Path]) -> set[Pat
         set[Path]: A set containing the paths to the `.whl` files found in the "dist" directories
             of the specified projects.
     """
-    build_plan = current_build_plan.get()
+    build_plan = current_packaging_context.get().build_plan
 
     wheel_deps = set()
     for project_path in project_paths:
@@ -70,7 +70,7 @@ def collect_path_dependencies(
     Returns:
         set[Path]: A set containing resolved project roots.
     """
-    build_plan = current_build_plan.get()
+    build_plan = current_packaging_context.get().build_plan
 
     if seen is None:
         seen = set()
@@ -120,7 +120,7 @@ def collect_path_dependencies(
 
 @audit(StageType.INIT, substage="analyze_project")
 def analyze_project():
-    build_plan = current_build_plan.get()
+    build_plan = current_packaging_context.get().build_plan
     path_deps = collect_path_dependencies(build_plan.project_dir / "pyproject.toml")
     path_dep_wheel_locations = collect_path_dependency_wheel_locations(path_deps - {build_plan.project_dir})
     build_plan.path_dep_wheel_locations.update(path_dep_wheel_locations)

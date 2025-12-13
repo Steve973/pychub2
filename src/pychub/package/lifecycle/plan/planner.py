@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pychub.package.context_vars import current_build_plan
+from pychub.package.context_vars import current_packaging_context
 from pychub.package.lifecycle.audit.build_event_model import audit, StageType
 from pychub.package.lifecycle.plan.compatibility.compatibility_resolver import resolve_compatibility
 
@@ -27,7 +27,7 @@ def plan_build(cache_dir: Path) -> Path:
     Returns:
         Path: The path to the persisted build plan JSON file.
     """
-    build_plan = current_build_plan.get()
+    build_plan = current_packaging_context.get().build_plan
     # project = build_plan.project
 
     # Stage runtime resources:

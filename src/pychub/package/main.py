@@ -4,11 +4,13 @@ import sys
 from pathlib import Path
 
 from pychub.helper.sys_check_utils import check_python_version, verify_pip
-from pychub.package.context_vars import current_build_plan
+from pychub.package.context_vars import current_packaging_context
 from pychub.package.domain.buildplan_model import BuildPlan
 from pychub.package.lifecycle.audit.audit_emitter import emit_audit_log
 from pychub.package.lifecycle.audit.build_event_model import BuildEvent, StageType, EventType, audit
-from pychub.package.lifecycle.init.initializer import init_project, ImmediateOutcome
+from pychub.package.lifecycle.init.initializer import init_project, ImmediateOutcome, init_metadata_resolver, \
+    init_wheel_resolver
+from pychub.package.lifecycle.packaging_context import PackagingContext
 from pychub.package.lifecycle.plan.planner import plan_build
 
 
@@ -50,7 +52,6 @@ def run(chubproject_path: Path | None = None) -> BuildPlan:
 
     """
     build_plan = BuildPlan()
-    var_token = current_build_plan.set(build_plan)
     try:
         build_plan.audit_log.append(
             BuildEvent.make(
@@ -68,6 +69,12 @@ def run(chubproject_path: Path | None = None) -> BuildPlan:
                 StageType.LIFECYCLE,
                 EventType.INPUT,
                 message=opts_msg))
+        metadata_resolver = init_metadata_resolver()
+        wheel_resolver = init_wheel_resolver()
+        var_token = current_packaging_context.set(PackagingContext(
+            build_plan=build_plan,
+            metadata_resolver=metadata_resolver,
+            wheel_resolver=wheel_resolver))
         cache_path, must_exit = init_project(chubproject_path)
         if must_exit == ImmediateOutcome.EXIT:
             build_plan.audit_log.append(
@@ -90,7 +97,7 @@ def run(chubproject_path: Path | None = None) -> BuildPlan:
                 message=str(e)))
         raise
     finally:
-        current_build_plan.reset(var_token)
+        current_packaging_context.reset(var_token)
         emit_audit_log(build_plan)
     return build_plan
 
