@@ -6,8 +6,8 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 from typing import ClassVar
-from typing import cast, Any
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen, Request
 
@@ -360,4 +360,4 @@ def load_wheel_metadata_strategies(
         ordered_names=ordered_names,
         precedence_overrides=precedence_overrides)
     _register_metadata_strategies(strategies)
-    return cast(list[BaseMetadataStrategy], strategies)
+    return strategies

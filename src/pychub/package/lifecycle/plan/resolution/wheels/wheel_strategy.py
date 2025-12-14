@@ -5,8 +5,8 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 from typing import Sequence, ClassVar
-from typing import cast, Any
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
@@ -318,4 +318,4 @@ def load_wheel_resolution_strategies(
         ordered_names=ordered_names,
         precedence_overrides=precedence_overrides)
     _register_wheel_strategies(strategies)
-    return cast(list[WheelResolutionStrategy], strategies)
+    return strategies
