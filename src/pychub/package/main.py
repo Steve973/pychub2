@@ -51,6 +51,7 @@ def run(chubproject_path: Path | None = None) -> BuildPlan:
             error is logged and re-raised.
 
     """
+    var_token = None
     build_plan = BuildPlan()
     try:
         build_plan.audit_log.append(
@@ -97,7 +98,8 @@ def run(chubproject_path: Path | None = None) -> BuildPlan:
                 message=str(e)))
         raise
     finally:
-        current_packaging_context.reset(var_token)
+        if var_token is not None:
+            current_packaging_context.reset(var_token)
         emit_audit_log(build_plan)
     return build_plan
 

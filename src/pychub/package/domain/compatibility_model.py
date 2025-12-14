@@ -559,7 +559,8 @@ class CompatibilitySpec(MultiformatSerializableMixin, MultiformatDeserializableM
 
     def __post_init__(self) -> None:
         build_plan: BuildPlan = current_packaging_context.get().build_plan
-        spec_str = ",".join(f"=={v}" for v in build_plan.resolved_python_versions)
+        filtered_versions = self.python_versions_spec.filter_versions(build_plan.resolved_python_versions)
+        spec_str = ",".join(f"=={v}" for v in filtered_versions)
         self._py_bounds = SpecifierSet(spec_str)
         # Precompute explicit tag profiles from CompatibilityTagsSpec
         for profile in self.compatibility_tags.values():
