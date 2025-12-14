@@ -18,7 +18,7 @@ PLATFORM_RE = re.compile(
     r"(?:_(?P<arch>[A-Za-z0-9_]+))?$")
 
 
-def split_platform_tag(platform: str) -> tuple[str, str | None, str | None]:
+def _split_platform_tag(platform: str) -> tuple[str, str | None, str | None]:
     """
     Splits a platform tag into its respective components: flavor, version, and architecture.
 
@@ -50,7 +50,7 @@ def split_platform_tag(platform: str) -> tuple[str, str | None, str | None]:
     return flavor, version, arch
 
 
-def parse_glibc_like_version(v: str) -> tuple[int, int]:
+def _parse_glibc_like_version(v: str) -> tuple[int, int]:
     """
     Parses a version string resembling glibc-like versions into major and minor version components.
 
@@ -81,7 +81,7 @@ def parse_glibc_like_version(v: str) -> tuple[int, int]:
 # ---------------------------------------------------------------------------
 
 
-def parse_python_version_label(label: str) -> tuple[int, int] | None:
+def _parse_python_version_label(label: str) -> tuple[int, int] | None:
     """
     Extracts a (major, minor) Python version from a version label.
 
@@ -126,7 +126,7 @@ def parse_python_version_label(label: str) -> tuple[int, int] | None:
     return None
 
 
-def is_debug_abi(abi: str) -> bool:
+def _is_debug_abi(abi: str) -> bool:
     """
     Determines if the given ABI (Application Binary Interface) corresponds to a
     debug build configuration.
@@ -143,7 +143,7 @@ def is_debug_abi(abi: str) -> bool:
     return abi.endswith("d")
 
 
-def is_stable_abi(abi: str) -> bool:
+def _is_stable_abi(abi: str) -> bool:
     """
     Determines whether the provided ABI (Application Binary Interface) string represents
     a stable ABI.
@@ -163,7 +163,7 @@ def is_stable_abi(abi: str) -> bool:
 
 # ---------------- Python interpreter ----------------
 
-def accept_interpreter(interpreter: str) -> bool:
+def _accept_interpreter(interpreter: str) -> bool:
     """
     Checks if the provided interpreter part of a tag (e.g., 'cp311', 'py3') is accepted
     according to the PythonVersionsSpec.
@@ -216,10 +216,10 @@ def accept_interpreter(interpreter: str) -> bool:
         m = re.match(r"^py(\d+)$", interpreter)
         if m:
             major = int(m.group(1))
-            return any(v_str.startswith(f"{major}.") for v_str in build_plan.resolved_python_versions)
+            return any(v_str.version.startswith(f"{major}.") for v_str in bounds)
 
     # 5) everything else must map to a concrete version in-range
-    v = parse_python_version_label(interpreter)
+    v = _parse_python_version_label(interpreter)
     if v is None:
         # No guessing: if we can't map it, we don't accept it.
         return False
@@ -229,7 +229,7 @@ def accept_interpreter(interpreter: str) -> bool:
 
 # ---------------- ABI ----------------
 
-def accept_abi(abi: str) -> bool:
+def _accept_abi(abi: str) -> bool:
     """
     Checks the ABI (Application Binary Interface) part of a tag against specified
     rules defined by the AbiValuesSpec. The function verifies if the provided ABI
@@ -283,11 +283,11 @@ def accept_abi(abi: str) -> bool:
         return True
 
     # 4) debug ABIs
-    if is_debug_abi(abi) and not aspec.include_debug:
+    if _is_debug_abi(abi) and not aspec.include_debug:
         return False
 
     # 5) stable ABIs
-    if is_stable_abi(abi):
+    if _is_stable_abi(abi):
         if not aspec.include_stable:
             return False
         if abi == "none":
@@ -297,10 +297,10 @@ def accept_abi(abi: str) -> bool:
         if not m:
             return False
         major = int(m.group(1))
-        return any(v_str.startswith(f"{major}.") for v_str in build_plan.resolved_python_versions)
+        return any(v_str.startswith(f"{major}.") for v_str in spec.resolved_python_version_list)
 
     # 6) cpXYZ-style ABIs: must map to a concrete version in-range
-    v = parse_python_version_label(abi)
+    v = _parse_python_version_label(abi)
     if v is None:
         return False
 
@@ -312,7 +312,7 @@ def accept_abi(abi: str) -> bool:
 
 # ---------------- Platform ----------------
 
-def accept_platform(platform: str) -> bool:
+def _accept_platform(platform: str) -> bool:
     """
     Evaluates whether a given platform string conforms to the platform specifications
     defined under the `PlatformValues`. The function performs a series of checks and rules
@@ -359,7 +359,7 @@ def accept_platform(platform: str) -> bool:
             return True
 
     # 4) family-based rules
-    flavor, version, arch = split_platform_tag(platform)
+    flavor, version, arch = _split_platform_tag(platform)
 
     family_spec: PlatformFamilySpec | None = None
     owning_os_spec: PlatformOSSpec | None = None
@@ -385,15 +385,15 @@ def accept_platform(platform: str) -> bool:
         return False
 
     if version is not None:
-        v_tuple = parse_glibc_like_version(version)
+        v_tuple = _parse_glibc_like_version(version)
 
         if family_spec.min and family_spec.min != "*":
-            min_v = parse_glibc_like_version(family_spec.min)
+            min_v = _parse_glibc_like_version(family_spec.min)
             if v_tuple < min_v:
                 return False
 
         if family_spec.max and family_spec.max != "*":
-            max_v = parse_glibc_like_version(family_spec.max)
+            max_v = _parse_glibc_like_version(family_spec.max)
             if v_tuple > max_v:
                 return False
 
@@ -401,7 +401,7 @@ def accept_platform(platform: str) -> bool:
 
 # ---------------- Full tag / top-level ----------------
 
-def accept_tag(tag: Tag) -> bool:
+def _accept_tag(tag: Tag) -> bool:
     """
     Determines whether the given tag is acceptable based on its interpreter,
     ABI, and platform. A tag is considered acceptable if its interpreter, ABI,
@@ -414,9 +414,9 @@ def accept_tag(tag: Tag) -> bool:
         bool: True if the tag is acceptable; otherwise, False.
     """
     return (
-        accept_interpreter(tag.interpreter)
-        and accept_abi(tag.abi)
-        and accept_platform(tag.platform))
+            _accept_interpreter(tag.interpreter)
+            and _accept_abi(tag.abi)
+            and _accept_platform(tag.platform))
 
 def evaluate_compatibility(tag_str: str) -> bool:
     """
@@ -441,6 +441,8 @@ def evaluate_compatibility(tag_str: str) -> bool:
     spec = build_plan.compatibility_spec
     if spec is None:
         raise RuntimeError("CompatibilitySpec not initialized")
+    spec.check_initialized()
+
     tag = next(iter(parse_tag(tag_str)))
 
     # Tag-level excludes
@@ -456,4 +458,4 @@ def evaluate_compatibility(tag_str: str) -> bool:
         return True
 
     # Fallback: axis-based rules
-    return accept_tag(tag)
+    return _accept_tag(tag)

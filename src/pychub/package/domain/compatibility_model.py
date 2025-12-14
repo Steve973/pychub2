@@ -9,7 +9,6 @@ from email.parser import Parser
 from functools import total_ordering
 from pathlib import Path
 from typing import Any
-from typing import TYPE_CHECKING
 
 from packaging.specifiers import SpecifierSet
 from packaging.tags import Tag, parse_tag
@@ -19,10 +18,7 @@ from packaging.version import Version, InvalidVersion
 from pychub.helper.multiformat_deserializable_mixin import MultiformatDeserializableMixin
 from pychub.helper.multiformat_serializable_mixin import MultiformatSerializableMixin
 from pychub.helper.toml_utils import dump_toml_to_str
-from pychub.package.domain.buildplan_model import BuildPlan
-
-if TYPE_CHECKING:
-    from pychub.package.context_vars import current_packaging_context
+from pychub.package.lifecycle.plan.compatibility.python_version_discovery import list_available_python_versions_for_spec
 
 _MIN_PATTERN = re.compile(r"""
     ^\s*
@@ -556,12 +552,9 @@ class CompatibilitySpec(MultiformatSerializableMixin, MultiformatDeserializableM
     _py_bounds: SpecifierSet | None = field(init=False, default=None, repr=False)
     _tags_specific_only: bool = field(default=False, repr=False)
     _tags_whitelist: set[Tag] = field(default_factory=set, repr=False)
+    _realized: bool = field(init=False, default=False, repr=False)
 
     def __post_init__(self) -> None:
-        build_plan: BuildPlan = current_packaging_context.get().build_plan
-        filtered_versions = self.python_versions_spec.filter_versions(build_plan.resolved_python_versions)
-        spec_str = ",".join(f"=={v}" for v in filtered_versions)
-        self._py_bounds = SpecifierSet(spec_str)
         # Precompute explicit tag profiles from CompatibilityTagsSpec
         for profile in self.compatibility_tags.values():
             parsed_specific: set[Tag] = set()
@@ -572,11 +565,22 @@ class CompatibilitySpec(MultiformatSerializableMixin, MultiformatDeserializableM
             if profile.specific_only:
                 self._tags_specific_only = True
 
-                self._tags_whitelist.update(parsed_specific)
+            self._tags_whitelist.update(parsed_specific)
 
             if profile.excludes:
                 for s in profile.excludes:
                     self._exclude_tags.update(parse_tag(s))
+
+    def realize_python_versions(self):
+        available_python_versions = list_available_python_versions_for_spec(self.python_versions_spec)
+        filtered_versions = self.python_versions_spec.filter_versions(available_python_versions)
+        spec_str = ",".join(f"=={v}" for v in filtered_versions)
+        self._py_bounds = SpecifierSet(spec_str)
+        self._realized = self._py_bounds is not None
+
+    def check_initialized(self):
+        if not self._realized:
+            raise ValueError("CompatibilitySpec must be realized before use.")
 
     @property
     def exclude_tags(self) -> set[Tag]:
@@ -590,6 +594,7 @@ class CompatibilitySpec(MultiformatSerializableMixin, MultiformatDeserializableM
         Returns:
             set[Tag]: The set of excluded tags or an empty set if none.
         """
+        self.check_initialized()
         return self._exclude_tags or set()
 
     @property
@@ -604,7 +609,22 @@ class CompatibilitySpec(MultiformatSerializableMixin, MultiformatDeserializableM
             SpecifierSet | None: The Python version range as a SpecifierSet if bounds
                 are defined, otherwise None.
         """
+        self.check_initialized()
         return self._py_bounds or None
+
+    @property
+    def resolved_python_version_list(self) -> list[str]:
+        """
+        Resolves and returns a list of Python versions based on version specifications.
+
+        This property retrieves a list of Python versions from the provided version
+        specifications by extracting the `version` attribute from each element in the
+        internal list of Python version bounds.
+
+        Returns:
+            list[str]: A list of resolved Python version strings.
+        """
+        return [spec_set.version for spec_set in self._py_bounds] if self._py_bounds else []
 
     @property
     def tags(self) -> set[Tag]:
@@ -674,6 +694,7 @@ class CompatibilitySpec(MultiformatSerializableMixin, MultiformatDeserializableM
         Returns:
             dict[str, Any]: A dictionary containing the mappings for the instance's attributes.
         """
+        self.check_initialized()
         result: dict[str, Any] = {}
 
         pv_mapping = self.python_versions_spec.to_mapping()
@@ -780,6 +801,7 @@ class CompatibilitySpec(MultiformatSerializableMixin, MultiformatDeserializableM
         Raises:
             FileExistsError: If the target file exists and `overwrite` is False.
         """
+        self.check_initialized()
         if path.exists() and not overwrite:
             raise FileExistsError(f"{path} already exists and overwrite=False")
         if not path.parent.exists() and make_parents:

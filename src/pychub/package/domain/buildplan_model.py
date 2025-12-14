@@ -47,7 +47,6 @@ class BuildPlan(MultiformatSerializableMixin, MultiformatDeserializableMixin):
         project_hash (str): Unique identifier or hash of the Chub project directory,
             used for staging organization.
         pychub_version (str): The version of Pychub used to create this build plan.
-        resolved_python_versions (list[str]): Resolved Python versions for the project.
         wheels (WheelCollection): Collection of wheels to be included in the build.
     """
 
@@ -75,8 +74,6 @@ class BuildPlan(MultiformatSerializableMixin, MultiformatDeserializableMixin):
     project_hash: str = field(default="")
     # The version of pychub that created this plan
     pychub_version: str = field(default_factory=lambda: get_version("pychub"))
-    # Resolved Python versions for the project
-    resolved_python_versions: list[str] = field(default_factory=list)
     # Wheels to be staged in the build
     wheels: WheelCollection = field(default_factory=WheelCollection)
 
@@ -124,7 +121,6 @@ class BuildPlan(MultiformatSerializableMixin, MultiformatDeserializableMixin):
             project_dir=Path(mapping.get("project_dir") or "."),
             project_hash=mapping.get("project_hash", ""),
             pychub_version=mapping.get("pychub_version", get_version("pychub")),
-            resolved_python_versions=mapping.get("resolved_python_versions", []),
             wheels=WheelCollection.from_mapping(mapping.get("wheels", [])))
 
     # ------------------------------------------------------------------ #
@@ -163,7 +159,6 @@ class BuildPlan(MultiformatSerializableMixin, MultiformatDeserializableMixin):
             "project_dir": str(self.project_dir),
             "project_hash": self.project_hash,
             "pychub_version": self.pychub_version,
-            "resolved_python_versions": self.resolved_python_versions,
             "wheels": self.wheels.to_mapping(),
         }
         derived = {

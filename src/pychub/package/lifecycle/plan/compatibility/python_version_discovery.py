@@ -14,10 +14,10 @@ ENTRYPOINT_GROUP = "pychub.model.compatibility.version_discovery"
 PACKAGE_NAME = __name__.rsplit(".", 1)[0]
 
 
-def list_all_available_python_versions(discovery: PythonVersionDiscovery | None = None) -> list[str]:
+def _list_all_available_python_versions(discovery: PythonVersionDiscovery | None = None) -> list[str]:
     """
     Attempts to discover all available Python versions using the provided discovery
-    mechanism or by utilizing a set of predefined discovery strategies.
+    mechanism or by using a set of predefined discovery strategies.
 
     This function iterates through a list of discovery strategies and attempts to
     fetch the list of available Python versions. If a specific discovery mechanism
@@ -30,7 +30,7 @@ def list_all_available_python_versions(discovery: PythonVersionDiscovery | None 
 
     Args:
         discovery (PythonVersionDiscovery | None): A specific discovery mechanism to
-            be used. If set to None, default discovery strategies are utilized.
+            be used. If set to None, default discovery strategies are used.
 
     Returns:
         list[str]: A list of discovered Python version strings.
@@ -40,29 +40,23 @@ def list_all_available_python_versions(discovery: PythonVersionDiscovery | None 
             strategies encountered errors during execution, the last error
             encountered will be chained with this exception.
     """
-    if discovery is not None:
-        discovery_strategies: list[PythonVersionDiscovery] = [discovery]
-    else:
-        discovery_strategies = load_python_version_discovery_strategies()
+    strategies: list[PythonVersionDiscovery] = (
+        [discovery]
+        if discovery is not None
+        else load_python_version_discovery_strategies())
 
+    versions: list[str] | None = None
     last_error: Exception | None = None
 
-    for strat in discovery_strategies:
+    for strat in strategies:
         try:
             versions = strat.list_versions()
         except Exception as exc:
-            # Probably httpx errors, JSON parse, etc. Try the next strategy.
             last_error = exc
-            continue
-
-        if not versions:
-            continue
 
         if versions:
             return versions
 
-    # If we get here, either no strategy worked, or none produced any versions
-    # within the spec band.
     if last_error is not None:
         raise RuntimeError(
             "No available Python versions found; last discovery error was"
@@ -93,7 +87,7 @@ def list_available_python_versions_for_spec(
     Raises:
         RuntimeError: If no Python versions match the given specification.
     """
-    versions = list_all_available_python_versions(discovery)
+    versions = _list_all_available_python_versions(discovery)
     filtered = py_ver_spec.filter_versions(versions)
     if filtered:
         return filtered
