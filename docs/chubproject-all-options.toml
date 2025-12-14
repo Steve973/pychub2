@@ -51,11 +51,11 @@ notes = [
   "use peppy-resolver profile: default",
 ]
 
-[tool.pychub.package.compatibility_spec]
+[tool.pychub.package.compatibility]
 strategy = "merge"            # optional: "merge" or "override"
 # file = "config/compat.toml" # optional: external compat spec file
 
-[tool.pychub.package.compatibility_spec.python_versions_spec]
+[tool.pychub.package.compatibility.python_versions]
 min = "3.10"
 max = "<4.0"
 types = ["cp", "py"]
@@ -68,22 +68,22 @@ excludes = [
   #  specific python versions to exclude
 ]
 
-[tool.pychub.package.compatibility_spec.python_versions_spec.android]
+[tool.pychub.package.compatibility.python_versions.android]
 placeholder = true
 
-[tool.pychub.package.compatibility_spec.python_versions_spec.ios]
+[tool.pychub.package.compatibility.python_versions.ios]
 placeholder = true
 
-[tool.pychub.package.compatibility_spec.python_versions_spec.linux]
+[tool.pychub.package.compatibility.python_versions.linux]
 placeholder = true
 
-[tool.pychub.package.compatibility_spec.python_versions_spec.macos]
+[tool.pychub.package.compatibility.python_versions.macos]
 placeholder = true
 
-[tool.pychub.package.compatibility_spec.python_versions_spec.windows]
+[tool.pychub.package.compatibility.python_versions.windows]
 placeholder = true
 
-[tool.pychub.package.compatibility_spec.abi_values]
+[tool.pychub.package.compatibility.abi_values]
 include_debug = false
 include_stable = true
 specific = [
@@ -94,7 +94,7 @@ excludes = [
   #  specific ABIs to exclude
 ]
 
-[tool.pychub.package.compatibility_spec.platform_values]
+[tool.pychub.package.compatibility.platform_values]
 arches = [
   #  specific architectures to include (e.g. "x86_64", "aarch64")
 ]
@@ -106,35 +106,35 @@ excludes = [
   #  specific platforms to exclude
 ]
 
-[tool.pychub.package.compatibility_spec.platform_values.linux]
+[tool.pychub.package.compatibility.platform_values.linux]
 enabled = true
 
-[tool.pychub.package.compatibility_spec.platform_values.linux.manylinux]
+[tool.pychub.package.compatibility.platform_values.linux.manylinux]
 enabled = true
 min = "2.17"
 max = "2.42"
 
-[tool.pychub.package.compatibility_spec.platform_values.linux.musllinux]
+[tool.pychub.package.compatibility.platform_values.linux.musllinux]
 enabled = true
 min = "1.1"
 max = "*"
 
-[tool.pychub.package.compatibility_spec.platform_values.macos]
+[tool.pychub.package.compatibility.platform_values.macos]
 # Not yet implemented
 enabled = false
 
-[tool.pychub.package.compatibility_spec.platform_values.android]
+[tool.pychub.package.compatibility.platform_values.android]
 # Not yet implemented
 enabled = false
 
-[tool.pychub.package.compatibility_spec.platform_values.ios]
+[tool.pychub.package.compatibility.platform_values.ios]
 # Not yet implemented
 enabled = false
 
-[tool.pychub.package.compatibility_spec.compatibility_tags]
+[tool.pychub.package.compatibility.compatibility_tags]
 specific_only = false
 
-[tool.pychub.package.compatibility_spec.compatibility_tags.linux]
+[tool.pychub.package.compatibility.compatibility_tags.linux]
 specific = [
   #  specific tags to include
 ]
