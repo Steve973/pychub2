@@ -677,11 +677,11 @@ class CompatibilitySpec(MultiformatSerializableMixin, MultiformatDeserializableM
 
         pv_mapping = self.python_versions_spec.to_mapping()
         if pv_mapping:
-            result["PythonVersions"] = pv_mapping
+            result["python_versions"] = pv_mapping
 
         abi_mapping = self.abi_values.to_mapping()
         if abi_mapping:
-            result["AbiValues"] = abi_mapping
+            result["abi_values"] = abi_mapping
 
         if self.platform_values:
             platform_block: dict[str, Any] = {}
@@ -690,7 +690,7 @@ class CompatibilitySpec(MultiformatSerializableMixin, MultiformatDeserializableM
                 if os_mapping:
                     platform_block[os_name] = os_mapping
             if platform_block:
-                result["PlatformValues"] = platform_block
+                result["platform_values"] = platform_block
 
         if self.compatibility_tags:
             tags_block: dict[str, Any] = {}
@@ -699,7 +699,7 @@ class CompatibilitySpec(MultiformatSerializableMixin, MultiformatDeserializableM
                 if profile_mapping:
                     tags_block[profile_name] = profile_mapping
             if tags_block:
-                result["CompatibilityTags"] = tags_block
+                result["compatibility_tags"] = tags_block
 
         return result
 
@@ -728,18 +728,18 @@ class CompatibilitySpec(MultiformatSerializableMixin, MultiformatDeserializableM
         """
         data = mapping or {}
 
-        python_versions = PythonVersionsSpec.from_mapping(data.get("PythonVersions"))
-        abi_values = AbiValuesSpec.from_mapping(data.get("AbiValues"))
+        python_versions = PythonVersionsSpec.from_mapping(data.get("python_versions"))
+        abi_values = AbiValuesSpec.from_mapping(data.get("abi_values"))
 
         platform_values: dict[str, PlatformOSSpec] = {}
-        platform_block = data.get("PlatformValues") or {}
+        platform_block = data.get("platform_values") or {}
         if isinstance(platform_block, Mapping):
             for os_name, os_mapping in platform_block.items():
                 if isinstance(os_mapping, Mapping):
                     platform_values[os_name] = PlatformOSSpec.from_mapping(os_mapping)
 
         compatibility_tags: dict[str, CompatibilityTagsSpec] = {}
-        tags_block = data.get("CompatibilityTags") or {}
+        tags_block = data.get("compatibility_tags") or {}
         if isinstance(tags_block, Mapping):
             for profile_name, profile_mapping in tags_block.items():
                 if isinstance(profile_mapping, Mapping):

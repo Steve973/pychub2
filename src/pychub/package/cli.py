@@ -26,7 +26,7 @@ def create_arg_parser() -> ArgumentParser:
     parser.add_argument(
         "--analyze-compatibility",
         action="store_true",
-        help="analyze target system compatibility and exit")
+        help="(CLI-only) analyze target system compatibility and exit")
 
     parser.add_argument(
         "-c",
@@ -37,12 +37,12 @@ def create_arg_parser() -> ArgumentParser:
     parser.add_argument(
         "--chubproject",
         type=Path,
-        help="optional path to use chubproject.toml as option config source")
+        help="(CLI-only) optional path to use chubproject.toml as option config source")
 
     parser.add_argument(
         "--chubproject-save",
         type=Path,
-        help="optional path to output options config to chubproject.toml")
+        help="(CLI-only) optional path to output options config to chubproject.toml")
 
     parser.add_argument(
         "-e",
@@ -116,7 +116,7 @@ def create_arg_parser() -> ArgumentParser:
         "-t",
         "--table",
         type=str,
-        help="optional table to use for options config (defaults to 'tool.pychub.package')")
+        help="(CLI-only) optional table to use for options config (defaults to 'tool.pychub.package')")
 
     parser.add_argument(
         "--verbose",
@@ -127,7 +127,7 @@ def create_arg_parser() -> ArgumentParser:
         "-v",
         "--version",
         action="store_true",
-        help="show version and exit")
+        help="(CLI-only) show version and exit")
 
     parser.add_argument(
         "-w",

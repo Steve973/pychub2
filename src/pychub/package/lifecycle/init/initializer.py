@@ -184,13 +184,25 @@ def process_options(args: Namespace) -> ChubProject:
             details=cli_details)
 
 
-@audit(StageType.INIT, substage="init_wheel_resolver_strategies")
-def init_wheel_resolver_strategies() -> list[WheelResolutionStrategy]:
+@audit(StageType.INIT, substage="init_metadata_resolver_strategies")
+def init_metadata_resolver_strategies() -> list[BaseMetadataStrategy]:
     return []
 
 
-@audit(StageType.INIT, substage="init_metadata_resolver_strategies")
-def init_metadata_resolver_strategies() -> list[BaseMetadataStrategy]:
+@audit(StageType.INIT, substage="init_metadata_resolver_config")
+def init_metadata_resolver_config() -> MetadataResolverConfig:
+    return MetadataResolverConfig.from_mapping({})
+
+
+@audit(StageType.INIT, substage="init_metadata_resolver")
+def init_metadata_resolver() -> MetadataResolver:
+    resolver_config = init_metadata_resolver_config()
+    resolver_strategies = init_metadata_resolver_strategies()
+    return MetadataResolver(config=resolver_config, strategies=resolver_strategies)
+
+
+@audit(StageType.INIT, substage="init_wheel_resolver_strategies")
+def init_wheel_resolver_strategies() -> list[WheelResolutionStrategy]:
     return []
 
 
@@ -199,22 +211,11 @@ def init_wheel_resolver_config() -> WheelResolverConfig:
     return WheelResolverConfig.from_mapping({})
 
 
-@audit(StageType.INIT, substage="init_metadata_resolver_config")
-def init_metadata_resolver_config() -> MetadataResolverConfig:
-    return MetadataResolverConfig.from_mapping({})
-
-
 @audit(StageType.INIT, substage="init_wheel_resolver")
 def init_wheel_resolver() -> WheelResolver:
     resolver_config = init_wheel_resolver_config()
     resolver_strategies = init_wheel_resolver_strategies()
     return WheelResolver(config=resolver_config, strategies=resolver_strategies)
-
-
-def init_metadata_resolver() -> MetadataResolver:
-    resolver_config = init_metadata_resolver_config()
-    resolver_strategies = init_metadata_resolver_strategies()
-    return MetadataResolver(config=resolver_config, strategies=resolver_strategies)
 
 
 @audit(StageType.INIT)

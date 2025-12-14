@@ -386,7 +386,7 @@ class ChubProject(MultiformatSerializableMixin, MultiformatDeserializableMixin):
         version (str | None): The version of the Chub project.
         project_path (str | None): The root path of the project, typically "." or a specific
             directory.
-        chub (str | None): Identifier representing the specific Chub behavior or format.
+        chub (str | None): Optional path to the output .chub file.
         entrypoint (str | None): The entry point script or module for this project.
         entrypoint_args (list[str]): The arguments for the entry point script or module.
         verbose (bool): A flag indicating whether verbose logging is enabled.

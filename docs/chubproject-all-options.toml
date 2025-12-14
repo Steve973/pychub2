@@ -1,0 +1,144 @@
+[tool.pychub.package]
+name         = "my-awesome-tool"
+version      = "1.2.3"
+project_path = "."                # base dir (likely your python project root)
+chub         = "dist/my-awesome-tool-1.2.3.chub"
+
+# Main wheel plus any extra wheels you want in the bundle
+wheels = [
+  "dist/my_awesome_tool-1.2.3-py3-none-any.whl",
+  "dist/my_awesome_plugin-0.4.0-py3-none-any.whl",
+]
+
+# Optional entrypoint: module:function or console script
+entrypoint      = "my_awesome_tool.cli:main"
+entrypoint_args = ["--log-level", "INFO", "--config", "config/prod.toml"]
+
+# Extra files/dirs to bundle into the .chub
+includes = [
+  "docs/README.md",                  # Copies to includes/README.md
+  "docs/README.md::manuals/",        # Copies to includes/manuals/README.md
+  "docs/README.md::manuals/guide.md" # Copies to includes/manuals/guide.md
+]
+
+include_chubs = [
+  "/path/to/metrics_bundle-0.5.0.chub",
+  "/another/path/to/monitoring_bundle-2.1.0.chub",
+]
+
+# Lifecycle scripts (from the Scripts model)
+[tool.pychub.package.scripts]
+pre = [
+  "scripts/pre_clean.sh",
+  "scripts/generate_assets.sh",
+]
+post = [
+  "scripts/post_verify.sh",
+  "scripts/post_cleanup.sh",
+]
+
+# Free-form project-level metadata that ends up in the chubconfig
+[tool.pychub.package.metadata]
+requires_python = ">=3.10"
+license = "MIT"
+keywords = ["packaging", "pychub", "example"]
+maintainers = [
+  "Alice Example <alice@example.com>",
+  "Bob Example <bob@example.com>",
+]
+notes = [
+  "internal-only build",
+  "use peppy-resolver profile: default",
+]
+
+[tool.pychub.package.compatibility_spec]
+strategy = "merge"            # optional: "merge" or "override"
+# file = "config/compat.toml" # optional: external compat spec file
+
+[tool.pychub.package.compatibility_spec.python_versions_spec]
+min = "3.10"
+max = "<4.0"
+types = ["cp", "py"]
+accept_universal = true
+specific = [
+  #  specific python versions to include (e.g. "3.11", "3.12")
+]
+specific_only = false
+excludes = [
+  #  specific python versions to exclude
+]
+
+[tool.pychub.package.compatibility_spec.python_versions_spec.android]
+placeholder = true
+
+[tool.pychub.package.compatibility_spec.python_versions_spec.ios]
+placeholder = true
+
+[tool.pychub.package.compatibility_spec.python_versions_spec.linux]
+placeholder = true
+
+[tool.pychub.package.compatibility_spec.python_versions_spec.macos]
+placeholder = true
+
+[tool.pychub.package.compatibility_spec.python_versions_spec.windows]
+placeholder = true
+
+[tool.pychub.package.compatibility_spec.abi_values]
+include_debug = false
+include_stable = true
+specific = [
+  #  specific ABIs to include
+]
+specific_only = false
+excludes = [
+  #  specific ABIs to exclude
+]
+
+[tool.pychub.package.compatibility_spec.platform_values]
+arches = [
+  #  specific architectures to include (e.g. "x86_64", "aarch64")
+]
+specific = [
+  #  specific platforms to include (e.g. "manylinux_2_17_x86_64")
+]
+specific_only = false
+excludes = [
+  #  specific platforms to exclude
+]
+
+[tool.pychub.package.compatibility_spec.platform_values.linux]
+enabled = true
+
+[tool.pychub.package.compatibility_spec.platform_values.linux.manylinux]
+enabled = true
+min = "2.17"
+max = "2.42"
+
+[tool.pychub.package.compatibility_spec.platform_values.linux.musllinux]
+enabled = true
+min = "1.1"
+max = "*"
+
+[tool.pychub.package.compatibility_spec.platform_values.macos]
+# Not yet implemented
+enabled = false
+
+[tool.pychub.package.compatibility_spec.platform_values.android]
+# Not yet implemented
+enabled = false
+
+[tool.pychub.package.compatibility_spec.platform_values.ios]
+# Not yet implemented
+enabled = false
+
+[tool.pychub.package.compatibility_spec.compatibility_tags]
+specific_only = false
+
+[tool.pychub.package.compatibility_spec.compatibility_tags.linux]
+specific = [
+  #  specific tags to include
+]
+specific_only = false
+excludes = [
+  #  specific tags to exclude
+]
