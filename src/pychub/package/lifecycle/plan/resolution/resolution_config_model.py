@@ -8,8 +8,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TypeVar, Any
 
-from pychub.helper.multiformat_deserializable_mixin import MultiformatDeserializableMixin
-from pychub.helper.multiformat_serializable_mixin import MultiformatSerializableMixin
+from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
 
 TConfig = TypeVar("TConfig", bound="BaseResolverConfig")
 T = TypeVar("T", bound="ArtifactResolutionStrategyConfig")
@@ -95,7 +94,7 @@ class StrategyCriticality(Enum):
 ################################################################################
 
 @dataclass(slots=True, frozen=True, kw_only=True)
-class ArtifactResolutionStrategyConfig(MultiformatSerializableMixin, MultiformatDeserializableMixin):
+class ArtifactResolutionStrategyConfig(MultiformatModelMixin):
     name: str = field(default_factory=str)
     fqcn: str = field(default_factory=str)
     precedence: int = field(default=50)
@@ -223,7 +222,7 @@ class HttpWheelStrategyConfig(ArtifactResolutionStrategyConfig):
 
 
 @dataclass(slots=True, frozen=True)
-class BaseResolverConfig(MultiformatSerializableMixin, MultiformatDeserializableMixin):
+class BaseResolverConfig(MultiformatModelMixin):
     # Local root directory where all artifact cache state lives.
     local_cache_root: Path
 

@@ -10,8 +10,7 @@ from urllib.parse import urlparse
 from packaging.tags import Tag
 from packaging.utils import parse_wheel_filename
 
-from pychub.helper.multiformat_deserializable_mixin import MultiformatDeserializableMixin
-from pychub.helper.multiformat_serializable_mixin import MultiformatSerializableMixin
+from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
 from pychub.package.context_vars import current_packaging_context
 from pychub.package.domain.compatibility_model import WheelKey, Pep691Metadata, Pep691FileMetadata
 from pychub.package.lifecycle.plan.resolution.caching_model import WheelCacheModel, create_key, WheelCacheIndexModel
@@ -115,7 +114,7 @@ def _resolve_uri_for_wheel_key(
     return chosen.url
 
 
-class WheelResolver(MultiformatSerializableMixin, MultiformatDeserializableMixin):
+class WheelResolver(MultiformatModelMixin):
     _config: WheelResolverConfig
     _strategies: Sequence[WheelResolutionStrategy]
     _index: WheelCacheModel
@@ -215,6 +214,7 @@ class WheelResolver(MultiformatSerializableMixin, MultiformatDeserializableMixin
             hash_algorithm, hash_value, size_bytes = _compute_hash_and_size(wheel_path)
 
             # 5. Build index entry and update cache.
+            now = datetime.now().replace(microsecond=0)
             index_entry = WheelCacheIndexModel(
                 key=cache_key,
                 path=wheel_path,
@@ -224,7 +224,8 @@ class WheelResolver(MultiformatSerializableMixin, MultiformatDeserializableMixin
                 hash_algorithm=hash_algorithm,
                 hash=hash_value,
                 size_bytes=size_bytes,
-                timestamp=datetime.now().replace(microsecond=0))
+                timestamp=now,
+                expiration=now.replace(minute=now.minute + 1440))
             self._index.put(index_entry)
 
             return wheel_path

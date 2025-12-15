@@ -15,8 +15,7 @@ from packaging.tags import Tag, parse_tag
 from packaging.utils import canonicalize_name
 from packaging.version import Version, InvalidVersion
 
-from pychub.helper.multiformat_deserializable_mixin import MultiformatDeserializableMixin
-from pychub.helper.multiformat_serializable_mixin import MultiformatSerializableMixin
+from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
 from pychub.helper.toml_utils import dump_toml_to_str
 from pychub.package.lifecycle.plan.compatibility.python_version_discovery import list_available_python_versions_for_spec
 
@@ -62,7 +61,7 @@ def _normalize_str_list(value: Any) -> list[str]:
 
 
 @dataclass(slots=True)
-class PythonVersionsSpec(MultiformatSerializableMixin):
+class PythonVersionsSpec(MultiformatModelMixin):
     """
     Represents a specification for Python version constraints and custom selections.
 
@@ -164,7 +163,7 @@ class PythonVersionsSpec(MultiformatSerializableMixin):
         return sorted(result, key=Version)
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any] | None) -> PythonVersionsSpec:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> PythonVersionsSpec:
         """
         Constructs a PythonVersionsSpec object from a mapping of data.
 
@@ -173,7 +172,7 @@ class PythonVersionsSpec(MultiformatSerializableMixin):
         is not provided or is None, default empty values are applied.
 
         Args:
-            data (Mapping[str, Any] | None): A dictionary-like object containing
+            mapping (Mapping[str, Any] | None): A dictionary-like object containing
                 data to populate the PythonVersionsSpec attributes. May include
                 the keys "min", "max", "types", "specific", and "excludes". If not
                 provided, default empty values are used.
@@ -182,16 +181,16 @@ class PythonVersionsSpec(MultiformatSerializableMixin):
             PythonVersionsSpec: An instance of PythonVersionsSpec initialized with
             the provided mapping values.
         """
-        if data is None:
+        if mapping is None:
             raise ValueError("Mapping data must be provided")
         return cls(
-            min=str(data.get("min")),
-            max=str(data.get("max")),
-            types=_normalize_str_list(data.get("types")),
-            accept_universal=bool(data.get("accept_universal", True)),
-            specific=_normalize_str_list(data.get("specific")),
-            specific_only=bool(data.get("specific_only", False)),
-            excludes=_normalize_str_list(data.get("excludes")))
+            min=str(mapping.get("min")),
+            max=str(mapping.get("max")),
+            types=_normalize_str_list(mapping.get("types")),
+            accept_universal=bool(mapping.get("accept_universal", True)),
+            specific=_normalize_str_list(mapping.get("specific")),
+            specific_only=bool(mapping.get("specific_only", False)),
+            excludes=_normalize_str_list(mapping.get("excludes")))
 
     def to_mapping(self) -> dict[str, Any]:
         """
@@ -236,7 +235,7 @@ class PythonVersionsSpec(MultiformatSerializableMixin):
 
 
 @dataclass(slots=True)
-class AbiValuesSpec(MultiformatSerializableMixin):
+class AbiValuesSpec(MultiformatModelMixin):
     """
     Represents the specification for AbiValues configuration.
 
@@ -264,7 +263,7 @@ class AbiValuesSpec(MultiformatSerializableMixin):
     excludes: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any] | None) -> AbiValuesSpec:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> AbiValuesSpec:
         """
         Creates an instance of the class by mapping given data to its attributes.
 
@@ -274,14 +273,14 @@ class AbiValuesSpec(MultiformatSerializableMixin):
         normalization of specific string lists for certain attributes.
 
         Args:
-            data (Mapping[str, Any] | None): Input mapping data containing keys and raw
+            mapping (Mapping[str, Any] | None): Input mapping data containing keys and raw
                 values for the attributes. If None, defaults will be used to create the instance.
 
         Returns:
             AbiValuesSpec: A new instance of AbiValuesSpec initialized with the provided
                 or default data.
         """
-        data = data or {}
+        data = mapping or {}
         return cls(
             include_debug=bool(data.get("include_debug", False)),
             include_stable=bool(data.get("include_stable", False)),
@@ -314,7 +313,7 @@ class AbiValuesSpec(MultiformatSerializableMixin):
 
 
 @dataclass(slots=True)
-class PlatformFamilySpec(MultiformatSerializableMixin):
+class PlatformFamilySpec(MultiformatModelMixin):
     """
     Represents specifications for a platform family, defining minimum and
     maximum parameters.
@@ -333,8 +332,8 @@ class PlatformFamilySpec(MultiformatSerializableMixin):
     max: str | None = None
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any] | None) -> PlatformFamilySpec:
-        data = data or {}
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> PlatformFamilySpec:
+        data = mapping or {}
         return cls(
             min=data.get("min"),
             max=data.get("max"))
@@ -360,7 +359,7 @@ class PlatformFamilySpec(MultiformatSerializableMixin):
 
 
 @dataclass(slots=True)
-class PlatformOSSpec(MultiformatSerializableMixin):
+class PlatformOSSpec(MultiformatModelMixin):
     """
     Represents the specifications and configurations for an operating system platform.
 
@@ -385,7 +384,7 @@ class PlatformOSSpec(MultiformatSerializableMixin):
     families: dict[str, PlatformFamilySpec] = field(default_factory=dict)
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any] | None) -> PlatformOSSpec:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> PlatformOSSpec:
         """
         Creates an instance of PlatformOSSpec from a mapping dictionary.
 
@@ -395,13 +394,13 @@ class PlatformOSSpec(MultiformatSerializableMixin):
         for any keys in the mapping that correspond to platform families.
 
         Args:
-            data (Mapping[str, Any] | None): A dictionary containing configuration data.
+            mapping (Mapping[str, Any] | None): A dictionary containing configuration data.
                 Keys can include "arches", "specific", "excludes", and platform family mappings.
 
         Returns:
             PlatformOSSpec: A constructed instance of PlatformOSSpec based on the given data.
         """
-        data = data or {}
+        data = mapping or {}
         arches = _normalize_str_list(data.get("arches"))
         specific = _normalize_str_list(data.get("specific"))
         specific_only = bool(data.get("specific_only", False))
@@ -451,7 +450,7 @@ class PlatformOSSpec(MultiformatSerializableMixin):
 
 
 @dataclass(slots=True)
-class CompatibilityTagsSpec(MultiformatSerializableMixin):
+class CompatibilityTagsSpec(MultiformatModelMixin):
     """
     Represents a specification for compatibility tags.
 
@@ -473,7 +472,7 @@ class CompatibilityTagsSpec(MultiformatSerializableMixin):
     excludes: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any] | None) -> CompatibilityTagsSpec:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> CompatibilityTagsSpec:
         """
         Creates an instance of CompatibilityTagsSpec from a mapping of data.
 
@@ -482,7 +481,7 @@ class CompatibilityTagsSpec(MultiformatSerializableMixin):
         is provided, it initializes with default empty values.
 
         Args:
-            data (Mapping[str, Any] | None): The mapping containing the keys
+            mapping (Mapping[str, Any] | None): The mapping containing the keys
                 "specific" and "excludes", each paired with values to be normalized
                 into string lists. If None is passed, empty values will be used.
 
@@ -490,7 +489,7 @@ class CompatibilityTagsSpec(MultiformatSerializableMixin):
             CompatibilityTagsSpec: An instance of the CompatibilityTagsSpec class
             initialized with the normalized "specific" and "excludes" data.
         """
-        data = data or {}
+        data = mapping or {}
         return cls(
             specific=_normalize_str_list(data.get("specific")),
             specific_only=bool(data.get("specific_only", False)),
@@ -520,7 +519,7 @@ class CompatibilityTagsSpec(MultiformatSerializableMixin):
 
 
 @dataclass(kw_only=True)
-class CompatibilitySpec(MultiformatSerializableMixin, MultiformatDeserializableMixin):
+class CompatibilitySpec(MultiformatModelMixin):
     """
     Represents compatibility specifications and their serialization/deserialization.
 
@@ -748,20 +747,20 @@ class CompatibilitySpec(MultiformatSerializableMixin, MultiformatDeserializableM
         Returns:
             CompatibilitySpec: An instance initialized with the parsed compatibility data.
         """
-        data = mapping or {}
-
-        python_versions = PythonVersionsSpec.from_mapping(data.get("python_versions"))
-        abi_values = AbiValuesSpec.from_mapping(data.get("abi_values"))
+        python_versions_mapping: Mapping[str, Any] = mapping.get("python_versions") or {}
+        python_versions = PythonVersionsSpec.from_mapping(python_versions_mapping)
+        abi_values_mapping: Mapping[str, Any] = mapping.get("abi_values") or {}
+        abi_values = AbiValuesSpec.from_mapping(abi_values_mapping)
 
         platform_values: dict[str, PlatformOSSpec] = {}
-        platform_block = data.get("platform_values") or {}
+        platform_block = mapping.get("platform_values") or {}
         if isinstance(platform_block, Mapping):
             for os_name, os_mapping in platform_block.items():
                 if isinstance(os_mapping, Mapping):
                     platform_values[os_name] = PlatformOSSpec.from_mapping(os_mapping)
 
         compatibility_tags: dict[str, CompatibilityTagsSpec] = {}
-        tags_block = data.get("compatibility_tags") or {}
+        tags_block = mapping.get("compatibility_tags") or {}
         if isinstance(tags_block, Mapping):
             for profile_name, profile_mapping in tags_block.items():
                 if isinstance(profile_mapping, Mapping):
@@ -815,7 +814,7 @@ class CompatibilitySpec(MultiformatSerializableMixin, MultiformatDeserializableM
 
 @total_ordering
 @dataclass(slots=True, frozen=True)
-class WheelKey(MultiformatSerializableMixin, MultiformatDeserializableMixin):
+class WheelKey(MultiformatModelMixin):
     """
     Represents a unique identifying key for a wheel (a type of Python package distribution).
 
@@ -1006,7 +1005,7 @@ class WheelKey(MultiformatSerializableMixin, MultiformatDeserializableMixin):
 
 
 @dataclass(slots=True, frozen=True)
-class ResolvedWheelNode(MultiformatSerializableMixin, MultiformatDeserializableMixin):
+class ResolvedWheelNode(MultiformatModelMixin):
     """
     Represents minimal compatibility and download information for a resolved
     package (name, version) along with its dependencies.
@@ -1128,7 +1127,7 @@ class ResolvedWheelNode(MultiformatSerializableMixin, MultiformatDeserializableM
 
 
 @dataclass(slots=True)
-class CompatibilityResolution(MultiformatSerializableMixin, MultiformatDeserializableMixin):
+class CompatibilityResolution(MultiformatModelMixin):
     """
     Result of resolving a chub's dependency tree against a CompatibilitySpec.
 
@@ -1247,7 +1246,7 @@ class CompatibilityResolution(MultiformatSerializableMixin, MultiformatDeseriali
 
 
 @dataclass(slots=True, frozen=True)
-class Pep658Metadata(MultiformatDeserializableMixin):
+class Pep658Metadata(MultiformatModelMixin):
     """
     Represents metadata conforming to the PEP 658 standard.
 
@@ -1268,6 +1267,14 @@ class Pep658Metadata(MultiformatDeserializableMixin):
     version: str
     requires_python: str | None
     requires_dist: frozenset[str]
+
+    def to_mapping(self) -> Mapping[str, Any]:
+        return {
+            "name": self.name,
+            "version": self.version,
+            "requires-python": self.requires_python,
+            "dependencies": list(self.requires_dist),
+        }
 
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Pep658Metadata:
@@ -1340,7 +1347,7 @@ def _coerce_field(value: Any) -> bool | Mapping[str, str]:
 
 
 @dataclass(slots=True, frozen=True)
-class Pep691FileMetadata(MultiformatSerializableMixin, MultiformatDeserializableMixin):
+class Pep691FileMetadata(MultiformatModelMixin):
     filename: str
     url: str
     hashes: Mapping[str, str]
@@ -1375,7 +1382,7 @@ class Pep691FileMetadata(MultiformatSerializableMixin, MultiformatDeserializable
 
 
 @dataclass(slots=True, frozen=True)
-class Pep691Metadata(MultiformatSerializableMixin, MultiformatDeserializableMixin):
+class Pep691Metadata(MultiformatModelMixin):
     name: str
     files: Sequence[Pep691FileMetadata]
     last_serial: int | None = None

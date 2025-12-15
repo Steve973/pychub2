@@ -7,13 +7,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TypeVar, Generic
 
-from pychub.helper.multiformat_deserializable_mixin import MultiformatDeserializableMixin
-from pychub.helper.multiformat_serializable_mixin import MultiformatSerializableMixin
+from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
 from pychub.package.domain.compatibility_model import WheelKey
 from pychub.package.lifecycle.plan.resolution.resolution_config_model import StrategyType
 
 _EXPIRATION_MINUTES = 1440
-E = TypeVar("E")  # Cache entry model type
+E = TypeVar("E", bound=MultiformatModelMixin)  # Cache entry model type
 
 
 def create_key(wheel_key: WheelKey, compatibility_tag: str) -> str:
@@ -48,7 +47,7 @@ class BaseCacheIndexModel(ABC):
         }
 
 
-class BaseCacheModel(ABC, Generic[E], MultiformatSerializableMixin, MultiformatDeserializableMixin):
+class BaseCacheModel(ABC, Generic[E], MultiformatModelMixin):
     _index: dict[str, E]
 
     def __init__(self, index: dict[str, E] | None = None):
@@ -62,8 +61,7 @@ class BaseCacheModel(ABC, Generic[E], MultiformatSerializableMixin, MultiformatD
 
     @staticmethod
     def _entry_key(entry: E) -> str:
-        # both your entry models have .key, so the default works
-        return getattr(entry, "key")
+        return str(getattr(entry, "key"))
 
     # ---- common serialization ----
 
@@ -107,7 +105,7 @@ class BaseCacheModel(ABC, Generic[E], MultiformatSerializableMixin, MultiformatD
 
 
 @dataclass(slots=True)
-class MetadataCacheIndexModel(BaseCacheIndexModel, MultiformatSerializableMixin, MultiformatDeserializableMixin):
+class MetadataCacheIndexModel(BaseCacheIndexModel, MultiformatModelMixin):
     metadata_type: StrategyType
 
     def to_mapping(self) -> dict[str, Any]:
@@ -135,7 +133,7 @@ class MetadataCacheIndexModel(BaseCacheIndexModel, MultiformatSerializableMixin,
 
 
 @dataclass(slots=True)
-class WheelCacheIndexModel(BaseCacheIndexModel, MultiformatSerializableMixin, MultiformatDeserializableMixin):
+class WheelCacheIndexModel(BaseCacheIndexModel, MultiformatModelMixin):
     wheel_key: WheelKey
     compatibility_tag: str
     hash_algorithm: str = "sha256"

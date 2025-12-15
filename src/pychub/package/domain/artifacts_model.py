@@ -18,14 +18,13 @@ from packaging.tags import Tag
 from packaging.utils import parse_wheel_filename, NormalizedName, BuildTag
 from packaging.version import Version
 
-from pychub.helper.multiformat_deserializable_mixin import MultiformatDeserializableMixin
-from pychub.helper.multiformat_serializable_mixin import MultiformatSerializableMixin
+from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
 
 UNORDERED: int = 1_000_000
 
 
 @dataclass(frozen=True)
-class WheelId(MultiformatSerializableMixin):
+class WheelId(MultiformatModelMixin):
     """
     Represents an identifier for a wheel distribution package.
 
@@ -59,6 +58,13 @@ class WheelId(MultiformatSerializableMixin):
             "version": self.version,
             "tag_triple": self.tag_triple,
         }
+
+    @classmethod
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> WheelId:
+        return cls(
+            mapping["name"],
+            mapping["version"],
+            mapping["tag_triple"])
 
     def __str__(self) -> str:
         return f"{self.name}-{self.version}-{self.tag_triple}"
@@ -103,7 +109,7 @@ class WheelRoleType(str, Enum):
 
 
 @dataclass
-class WheelArtifact(MultiformatSerializableMixin, MultiformatDeserializableMixin):
+class WheelArtifact(MultiformatModelMixin):
     """
     Represents a wheel artifact, including its metadata, dependencies, and other relevant details.
 
@@ -335,7 +341,7 @@ class WheelArtifact(MultiformatSerializableMixin, MultiformatDeserializableMixin
 
 
 @dataclass
-class WheelCollection(MultiformatSerializableMixin, MultiformatDeserializableMixin):
+class WheelCollection(MultiformatModelMixin):
     """
     Represents a collection of wheel artifacts with features for categorization, filtering,
     and compatibility checks.
@@ -594,7 +600,7 @@ _EXTR_RE = re.compile(r"""extra\s*==\s*['"]([^'"]+)['"]""")
 # --------------------------------------------------------------------------
 
 @dataclass(slots=True)
-class SourceInfo(MultiformatSerializableMixin):
+class SourceInfo(MultiformatModelMixin):
     """Represents information about the source of an item.
 
     This class is used to store and serialize details about a source, such as its
@@ -633,9 +639,13 @@ class SourceInfo(MultiformatSerializableMixin):
             m["downloaded_at"] = self.downloaded_at
         return m
 
+    @classmethod
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> SourceInfo:
+        return cls(**mapping)
+
 
 @dataclass(slots=True, frozen=True)
-class ExtrasInfo(MultiformatSerializableMixin):
+class ExtrasInfo(MultiformatModelMixin):
     """
     Represents a container for managing extras and their dependencies.
 
@@ -675,24 +685,26 @@ class ExtrasInfo(MultiformatSerializableMixin):
 
         return ExtrasInfo.from_lists(provides, requires)
 
-    @staticmethod
-    def from_mapping(m: Mapping[str, list[str]]) -> ExtrasInfo:
+    @classmethod
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> ExtrasInfo:
         """
-        Creates an instance of ExtrasInfo from a mapping of strings to lists of strings.
+        Constructs an instance of ExtrasInfo using a mapping of extras.
 
-        This static method processes a given mapping and converts its values into lists,
-        ensuring a consistent format. If the provided mapping is None, an empty
-        dictionary is used by default.
+        The method takes a mapping where keys are strings and values are any type.
+        It converts each value in the mapping to a list and initializes the
+        extras attribute with this transformed data.
 
         Args:
-            m (Mapping[str, list[str]]): A mapping where keys are strings and the
-                corresponding values are lists of strings.
+            mapping (Mapping[str, Any]): A mapping where keys are strings and values
+                of any type, representing the raw data for extras.
+
+            **_ (Any): Variable-length keyword arguments that are unused.
 
         Returns:
-            ExtrasInfo: An instance of ExtrasInfo initialized with the transformed
-                `extras` dictionary.
+            ExtrasInfo: An instance of the ExtrasInfo class initialized with the
+            transformed extras data.
         """
-        return ExtrasInfo(extras={k: list(v) for k, v in (m or {}).items()})
+        return cls(extras={k: list(v) for k, v in (mapping or {}).items()})
 
     @staticmethod
     def from_lists(provides_extra: Iterable[str] | None,
@@ -789,7 +801,7 @@ class ExtrasInfo(MultiformatSerializableMixin):
 
 
 @dataclass(slots=True)
-class WheelInfo(MultiformatSerializableMixin):
+class WheelInfo(MultiformatModelMixin):
     """
     Represents metadata and information about a Python wheel file.
 
@@ -850,6 +862,8 @@ class WheelInfo(MultiformatSerializableMixin):
             "size": self.size,
             "tags": list(self.tags)
         }
+        if self.filename:
+            out.update({"filename": self.filename})
         ext = {
             "requires_python": self.requires_python,
             "deps": self.deps and list(self.deps),
@@ -861,8 +875,8 @@ class WheelInfo(MultiformatSerializableMixin):
         out.update({name: value for name, value in ext.items() if value})
         return out
 
-    @staticmethod
-    def from_mapping(filename: str, m: Mapping[str, Any]) -> WheelInfo:
+    @classmethod
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> WheelInfo:
         """
         Create a WheelInfo instance from a given mapping.
 
@@ -871,27 +885,26 @@ class WheelInfo(MultiformatSerializableMixin):
         and defaults for absent keys in the mapping.
 
         Args:
-            filename (str): The name of the wheel package file.
-            m (Mapping[str, Any]): A dictionary containing metadata and information
+            mapping (Mapping[str, Any]): A dictionary containing metadata and information
                 to populate the attributes of the `WheelInfo` object.
 
         Returns:
             WheelInfo: A fully populated instance of the `WheelInfo` class.
         """
         return WheelInfo(
-            filename=filename,
-            name=str(m.get("name", "")),
-            version=str(m.get("version", "")),
-            size=int(m.get("size", 0)),
-            sha256=str(m.get("sha256", "")),
-            tags=[str(x) for x in (m.get("tags") or [])],
-            requires_python=(str(m["requires_python"])
-                             if m.get("requires_python") else None),
-            deps=[str(x) for x in (m.get("deps") or [])],
-            extras=ExtrasInfo.from_mapping(m.get("extras") or {}),
-            source=SourceInfo(**m["source"]) if m.get("source") else None,
-            meta=dict(m.get("meta") or {}),
-            wheel=dict(m.get("wheel") or {}))
+            filename=str(mapping.get("filename", "")),
+            name=str(mapping.get("name", "")),
+            version=str(mapping.get("version", "")),
+            size=int(mapping.get("size", 0)),
+            sha256=str(mapping.get("sha256", "")),
+            tags=[str(x) for x in (mapping.get("tags") or [])],
+            requires_python=(str(mapping["requires_python"])
+                             if mapping.get("requires_python") else None),
+            deps=[str(x) for x in (mapping.get("deps") or [])],
+            extras=ExtrasInfo.from_mapping(mapping.get("extras") or {}),
+            source=SourceInfo(**mapping["source"]) if mapping.get("source") else None,
+            meta=dict(mapping.get("meta") or {}),
+            wheel=dict(mapping.get("wheel") or {}))
 
     @staticmethod
     def build_from_wheel(
@@ -1213,7 +1226,7 @@ class ScriptType(str, Enum):
 
 
 @dataclass(slots=True, frozen=True)
-class ScriptSpec(MultiformatSerializableMixin):
+class ScriptSpec(MultiformatModelMixin):
     """
     Represents the specification for a script, including its source path and type.
 
@@ -1250,8 +1263,8 @@ class ScriptSpec(MultiformatSerializableMixin):
     def name(self) -> str:
         return self.src.name
 
-    @staticmethod
-    def from_mapping(m: Mapping[str, Any] | None) -> "ScriptSpec":
+    @classmethod
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> "ScriptSpec":
         """
         Constructs a ScriptSpec instance from a mapping of attributes.
 
@@ -1261,7 +1274,7 @@ class ScriptSpec(MultiformatSerializableMixin):
         valid `ScriptType`. If the mapping is empty, an error is raised.
 
         Args:
-            m (Mapping[str, Any] | None): A mapping containing the attributes
+            mapping (Mapping[str, Any] | None): A mapping containing the attributes
                 for constructing a ScriptSpec. It must include the `src` key
                 with a valid file path and the `script_type` key with a valid
                 ScriptType value.
@@ -1273,11 +1286,11 @@ class ScriptSpec(MultiformatSerializableMixin):
         Raises:
             ValueError: If the provided mapping is empty or invalid.
         """
-        if not m:
+        if not mapping:
             raise ValueError("Empty script mapping")
-        src = Path(m["src"])
-        script_type = ScriptType(m["script_type"])
-        return ScriptSpec(src, script_type)
+        src = Path(mapping["src"])
+        script_type = ScriptType(mapping["script_type"])
+        return cls(src, script_type)
 
     def to_mapping(self) -> dict[str, str]:
         """
@@ -1299,7 +1312,7 @@ class ScriptSpec(MultiformatSerializableMixin):
 
 
 @dataclass(slots=True, frozen=True)
-class Scripts(MultiformatSerializableMixin):
+class Scripts(MultiformatModelMixin):
     """
     Represents a collection of script specifications and provides utility
     methods for manipulation and serialization.
@@ -1360,8 +1373,8 @@ class Scripts(MultiformatSerializableMixin):
                 all_items.extend(s.items)
         return cls(_items=cls.dedup(all_items))
 
-    @staticmethod
-    def from_mapping(m: Mapping[str, list[dict[str, str]]] | None) -> "Scripts":
+    @classmethod
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> "Scripts":
         """
         Creates and returns an instance of the Scripts class based on the given mapping.
 
@@ -1371,19 +1384,19 @@ class Scripts(MultiformatSerializableMixin):
         instance using ScriptSpec definitions for each ScriptType.
 
         Args:
-            m (Mapping[str, list[dict[str, str]]] | None): A dictionary-like object mapping
+            mapping (Mapping[str, list[dict[str, str]]] | None): A dictionary-like object mapping
                 ScriptType values (as strings) to lists of dictionaries, or None.
 
         Returns:
             Scripts: A new Scripts instance initialized with ScriptSpec objects derived
                 from the provided mapping.
         """
-        if not m:
-            return Scripts()
-        return Scripts([
+        if not mapping:
+            return cls()
+        return cls([
             ScriptSpec.from_mapping(x)
             for t in ScriptType
-            for x in (m.get(t.value) or [])
+            for x in (mapping.get(t.value) or [])
         ])
 
     def to_mapping(self) -> dict[str, list[dict[str, str]]]:
@@ -1419,7 +1432,7 @@ class Scripts(MultiformatSerializableMixin):
 
 
 @dataclass(slots=True, frozen=True)
-class IncludeSpec(MultiformatSerializableMixin, MultiformatDeserializableMixin):
+class IncludeSpec(MultiformatModelMixin):
     """
     Represents a specification for including a file, detailing its source path and optional destination path.
 
@@ -1552,7 +1565,7 @@ class IncludeSpec(MultiformatSerializableMixin, MultiformatDeserializableMixin):
 
 
 @dataclass(slots=True, frozen=True)
-class Includes(MultiformatSerializableMixin, MultiformatDeserializableMixin):
+class Includes(MultiformatModelMixin):
     """
     Represents a collection of include specifications, with capabilities for
     serialization to various formats and parsing from TOML-compatible structures.

@@ -9,8 +9,7 @@ from typing import Any
 
 from appdirs import user_cache_dir
 
-from pychub.helper.multiformat_deserializable_mixin import MultiformatDeserializableMixin
-from pychub.helper.multiformat_serializable_mixin import MultiformatSerializableMixin
+from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
 from pychub.package.constants import CHUB_INCLUDES_DIR, CHUB_SCRIPTS_DIR, RUNTIME_DIR, CHUB_BUILD_DIR, CHUB_LIBS_DIR, \
     CHUBCONFIG_FILENAME, CHUB_WHEELS_DIR
 from pychub.package.domain.artifacts_model import WheelCollection, Scripts, Includes
@@ -20,7 +19,7 @@ from pychub.package.lifecycle.audit.build_event_model import BuildEvent
 
 
 @dataclass(frozen=False, kw_only=True)
-class BuildPlan(MultiformatSerializableMixin, MultiformatDeserializableMixin):
+class BuildPlan(MultiformatModelMixin):
     """
     Represents a build plan for a Chub project, which organizes various configurations,
     metadata, and resources required during the build process.

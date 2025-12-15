@@ -3,8 +3,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
-from pychub.helper.multiformat_deserializable_mixin import MultiformatDeserializableMixin
-from pychub.helper.multiformat_serializable_mixin import MultiformatSerializableMixin
+from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
 from pychub.package.lifecycle.plan.resolution.resolution_config_model import ArtifactResolutionStrategyConfig
 
 TConfig = TypeVar("TConfig", bound=ArtifactResolutionStrategyConfig)
@@ -15,8 +14,7 @@ TStrategy = TypeVar("TStrategy", bound="ArtifactResolutionStrategy[Any]")
 class ArtifactResolutionStrategy(
     Generic[TConfig],
     ABC,
-    MultiformatSerializableMixin,
-    MultiformatDeserializableMixin):
+    MultiformatModelMixin):
     strategy_config: TConfig
 
     # Runtime convenience: "what class is this instance actually?"

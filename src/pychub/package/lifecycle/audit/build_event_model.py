@@ -9,8 +9,7 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, ParamSpec, TypeVar
 
-from pychub.helper.multiformat_deserializable_mixin import MultiformatDeserializableMixin
-from pychub.helper.multiformat_serializable_mixin import MultiformatSerializableMixin
+from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
 from pychub.package.context_vars import current_packaging_context
 from pychub.package.domain.buildplan_model import BuildPlan
 
@@ -207,7 +206,7 @@ def audit(stage: StageType, substage: str | None = None) -> Callable[[Callable[P
 # --------------------------------------------------------------------------- #
 
 @dataclass(slots=True, frozen=True)
-class BuildEvent(MultiformatSerializableMixin, MultiformatDeserializableMixin):
+class BuildEvent(MultiformatModelMixin):
     """
     Represents a build event occurring during a build process.
 

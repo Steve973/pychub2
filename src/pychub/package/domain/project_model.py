@@ -8,14 +8,13 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from pychub.helper.multiformat_deserializable_mixin import MultiformatDeserializableMixin
-from pychub.helper.multiformat_serializable_mixin import MultiformatSerializableMixin
+from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
 from pychub.helper.toml_utils import dump_toml_to_str
 from pychub.package.domain.artifacts_model import Scripts
 
 
 @dataclass(slots=True, frozen=True)
-class ChubConfig(MultiformatSerializableMixin, MultiformatDeserializableMixin):
+class ChubConfig(MultiformatModelMixin):
     """
     Represents the configuration for Chub with various fields and utilities for serialization,
     deserialization, and validation.
@@ -71,7 +70,8 @@ class ChubConfig(MultiformatSerializableMixin, MultiformatDeserializableMixin):
         version = str(mapping.get("version", "")).strip()
         entrypoint = mapping.get("entrypoint")
         includes = [str(x) for x in (mapping.get("includes") or [])]
-        scripts = Scripts.from_mapping(mapping.get("scripts"))
+        scripts_mapping: Mapping[str, Any] = mapping.get("scripts", {}) or {}
+        scripts = Scripts.from_mapping(scripts_mapping)
         pinned_wheels = [str(x) for x in (mapping.get("pinned_wheels") or [])]
         targets = [str(x) for x in (mapping.get("targets") or [])]
         metadata = dict(mapping.get("metadata") or {})
@@ -370,7 +370,7 @@ class ChubProjectError(Exception):
 
 
 @dataclass(kw_only=True)
-class ChubProject(MultiformatSerializableMixin, MultiformatDeserializableMixin):
+class ChubProject(MultiformatModelMixin):
     """
     Represents a Chub project configuration, including attributes for identity, behavior,
     dependencies, metadata, and provenance tracking.
@@ -898,7 +898,7 @@ class OperationKind(str, Enum):
 
 
 @dataclass(slots=True)
-class ProvenanceEvent(MultiformatSerializableMixin, MultiformatDeserializableMixin):
+class ProvenanceEvent(MultiformatModelMixin):
     """
     Represents an event detailing its origin, the operation it performs, and additional related details.
 
