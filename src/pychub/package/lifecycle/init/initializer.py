@@ -15,11 +15,10 @@ from pychub.package.domain.project_model import ChubProject, SourceKind
 from pychub.package.lifecycle.audit.build_event_model import audit, BuildEvent, StageType, EventType
 from pychub.package.lifecycle.init import immediate_operations
 from pychub.package.lifecycle.init.project.project_file_analysis import analyze_project
-from pychub.package.lifecycle.plan.resolution.metadata.metadata_resolver import MetadataResolver
-from pychub.package.lifecycle.plan.resolution.metadata.metadata_strategy import BaseMetadataStrategy
+from pychub.package.lifecycle.plan.resolution.artifact_resolution import MetadataArtifactResolver, WheelArtifactResolver
+from pychub.package.lifecycle.plan.resolution.metadata.metadata_strategy import BaseMetadataResolutionStrategy
 from pychub.package.lifecycle.plan.resolution.resolution_config_model import WheelResolverConfig, MetadataResolverConfig
-from pychub.package.lifecycle.plan.resolution.wheels.wheel_resolver import WheelResolver
-from pychub.package.lifecycle.plan.resolution.wheels.wheel_strategy import WheelResolutionStrategy
+from pychub.package.lifecycle.plan.resolution.wheels.wheel_strategy import BaseWheelResolutionStrategy
 
 
 class ImmediateOutcome(Enum):
@@ -185,7 +184,7 @@ def process_options(args: Namespace) -> ChubProject:
 
 
 @audit(StageType.INIT, substage="init_metadata_resolver_strategies")
-def init_metadata_resolver_strategies() -> list[BaseMetadataStrategy]:
+def init_metadata_resolver_strategies() -> list[BaseMetadataResolutionStrategy]:
     return []
 
 
@@ -195,14 +194,15 @@ def init_metadata_resolver_config() -> MetadataResolverConfig:
 
 
 @audit(StageType.INIT, substage="init_metadata_resolver")
-def init_metadata_resolver() -> MetadataResolver:
+def init_metadata_resolver() -> MetadataArtifactResolver:
     resolver_config = init_metadata_resolver_config()
     resolver_strategies = init_metadata_resolver_strategies()
-    return MetadataResolver(config=resolver_config, strategies=resolver_strategies)
+    # TODO: fix the dest dir path
+    return MetadataArtifactResolver(config=resolver_config, strategies=resolver_strategies, destination_dir=Path.cwd() / "metadata")
 
 
 @audit(StageType.INIT, substage="init_wheel_resolver_strategies")
-def init_wheel_resolver_strategies() -> list[WheelResolutionStrategy]:
+def init_wheel_resolver_strategies() -> list[BaseWheelResolutionStrategy]:
     return []
 
 
@@ -212,10 +212,11 @@ def init_wheel_resolver_config() -> WheelResolverConfig:
 
 
 @audit(StageType.INIT, substage="init_wheel_resolver")
-def init_wheel_resolver() -> WheelResolver:
+def init_wheel_resolver() -> WheelArtifactResolver:
     resolver_config = init_wheel_resolver_config()
     resolver_strategies = init_wheel_resolver_strategies()
-    return WheelResolver(config=resolver_config, strategies=resolver_strategies)
+    # TODO: fix the dest dir path
+    return WheelArtifactResolver(config=resolver_config, strategies=resolver_strategies, destination_dir=Path.cwd() / "wheels")
 
 
 @audit(StageType.INIT)

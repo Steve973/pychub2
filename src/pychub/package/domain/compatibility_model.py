@@ -612,6 +612,23 @@ class CompatibilitySpec(MultiformatModelMixin):
         return self._py_bounds or None
 
     @property
+    def accepted_python_major_versions(self) -> frozenset[str]:
+        """
+        Returns a set of accepted Python major version numbers.
+
+        This property computes the set of major version numbers based on the
+        resolved Python version range available for the object instance. Each
+        version in this set corresponds to a distinct major version derived
+        from the resolved version range.
+
+        Returns:
+            frozenset[str]: A set of major version numbers as strings.
+        """
+        if self.resolved_python_version_range is None:
+            return frozenset()
+        return frozenset(str(Version(spec.version).major) for spec in self.resolved_python_version_range)
+
+    @property
     def resolved_python_version_list(self) -> list[str]:
         """
         Resolves and returns a list of Python versions based on version specifications.

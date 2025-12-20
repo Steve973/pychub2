@@ -7,16 +7,35 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TypeVar, Generic
 
+from packaging.utils import canonicalize_name, parse_wheel_filename
+
 from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
+from pychub.helper.wheel_tag_utils import choose_wheel_tag
 from pychub.package.domain.compatibility_model import WheelKey
+from pychub.package.lifecycle.plan.resolution.artifact_resolution import _wheel_filename_from_uri
 from pychub.package.lifecycle.plan.resolution.resolution_config_model import StrategyType
 
 _EXPIRATION_MINUTES = 1440
 E = TypeVar("E", bound=MultiformatModelMixin)  # Cache entry model type
 
 
-def create_key(wheel_key: WheelKey, compatibility_tag: str) -> str:
-    return f"{wheel_key.name}-{wheel_key.version}-{compatibility_tag}"
+def metadata_cache_key(wheel_key: WheelKey) -> str:
+    return f"{canonicalize_name(wheel_key.name)}=={wheel_key.version}"
+
+
+def get_uri_info(uri: str) -> tuple[str, str, str, WheelKey, str | None]:
+    filename = _wheel_filename_from_uri(uri)
+    name, version, _, tagset = parse_wheel_filename(filename)
+    wheel_key = WheelKey(str(name), str(version))
+    chosen_tag = choose_wheel_tag(filename=filename, name=str(name), version=str(version))
+    return filename, str(name), str(version), wheel_key, chosen_tag
+
+
+def wheel_cache_key(uri: str) -> str:
+    filename, name, version, wheel_key, chosen_tag = get_uri_info(uri)
+    if chosen_tag is None:
+        raise ValueError(f"Could not choose wheel tag for {wheel_key} from {uri}")
+    return f"{wheel_key.name}-{wheel_key.version}-{chosen_tag}"
 
 
 @dataclass(kw_only=True)
@@ -107,6 +126,9 @@ class BaseCacheModel(ABC, Generic[E], MultiformatModelMixin):
 @dataclass(slots=True)
 class MetadataCacheIndexModel(BaseCacheIndexModel, MultiformatModelMixin):
     metadata_type: StrategyType
+    hash_algorithm: str = "sha256"
+    hash: str = ""
+    size_bytes: int = 0
 
     def to_mapping(self) -> dict[str, Any]:
         base = self.to_base_mapping()

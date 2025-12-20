@@ -161,6 +161,34 @@ def _is_stable_abi(abi: str) -> bool:
         return True
     return abi.startswith("abi") and abi[3:].isdigit()
 
+
+def _accept_universal_interpreter(interpreter: str) -> bool:
+    build_plan = current_packaging_context.get().build_plan
+    spec = build_plan.compatibility_spec
+    if spec is None:
+        raise RuntimeError("CompatibilitySpec not initialized")
+    if not spec.python_versions_spec.accept_universal:
+        return False
+    for mv in spec.accepted_python_major_versions:
+        if f"py{mv}" in interpreter:
+            return True
+    return False
+
+
+def _accept_universal_abi(abi: str) -> bool:
+    return abi == "none"
+
+
+def _accept_universal_platform(platform: str) -> bool:
+    return platform == "any"
+
+
+def _accept_universal_tag(interpreter: str, abi: str, platform: str) -> bool:
+    return (_accept_universal_interpreter(interpreter)
+            and _accept_universal_abi(abi)
+            and _accept_universal_platform(platform))
+
+
 # ---------------- Python interpreter ----------------
 
 def _accept_interpreter(interpreter: str) -> bool:
@@ -212,11 +240,8 @@ def _accept_interpreter(interpreter: str) -> bool:
         return True
 
     # 4) 'pyX' universal form (single-digit major)
-    if vspec.accept_universal:
-        m = re.match(r"^py(\d+)$", interpreter)
-        if m:
-            major = int(m.group(1))
-            return any(v_str.version.startswith(f"{major}.") for v_str in bounds)
+    if _accept_universal_interpreter(interpreter):
+        return True
 
     # 5) everything else must map to a concrete version in-range
     v = _parse_python_version_label(interpreter)
@@ -261,6 +286,8 @@ def _accept_abi(abi: str) -> bool:
     Raises:
         RuntimeError: If the Python version bounds are not initialized.
     """
+    if _accept_universal_abi(abi):
+        return True
     build_plan = current_packaging_context.get().build_plan
     spec = build_plan.compatibility_spec
     if spec is None:
@@ -290,8 +317,6 @@ def _accept_abi(abi: str) -> bool:
     if _is_stable_abi(abi):
         if not aspec.include_stable:
             return False
-        if abi == "none":
-            return True
         # abiX -> stable ABI for major X
         m = re.search(r"(\d+)$", abi)
         if not m:
@@ -328,6 +353,8 @@ def _accept_platform(platform: str) -> bool:
         bool: True if the platform is accepted according to the specifications,
         False otherwise.
     """
+    if _accept_universal_platform(platform):
+        return True
     build_plan = current_packaging_context.get().build_plan
     spec = build_plan.compatibility_spec
     if spec is None:
@@ -413,10 +440,10 @@ def _accept_tag(tag: Tag) -> bool:
     Returns:
         bool: True if the tag is acceptable; otherwise, False.
     """
-    return (
-            _accept_interpreter(tag.interpreter)
-            and _accept_abi(tag.abi)
-            and _accept_platform(tag.platform))
+    return (_accept_universal_tag(tag.interpreter, tag.abi, tag.platform)
+            or (_accept_interpreter(tag.interpreter)
+                and _accept_abi(tag.abi)
+                and _accept_platform(tag.platform)))
 
 def evaluate_compatibility(tag_str: str) -> bool:
     """

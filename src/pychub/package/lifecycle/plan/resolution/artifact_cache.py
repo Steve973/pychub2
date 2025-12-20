@@ -2,27 +2,38 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime
 from operator import attrgetter
 from pathlib import Path
-from typing import Generic, TypeVar
-from typing import Optional
+from typing import Generic, TypeVar, Any
 
-from cachetools import Cache, LRUCache, TTLCache
+from cachetools import Cache, TLRUCache, LRUCache
 from cachetools import cachedmethod
 
-from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
 from pychub.package.domain.compatibility_model import WheelKey
+from pychub.package.lifecycle.plan.resolution.artifact_resolution import MetadataArtifactResolver
+from pychub.package.lifecycle.plan.resolution.artifact_resolution import WheelArtifactResolver
 from pychub.package.lifecycle.plan.resolution.caching_model import WheelCacheIndexModel, WheelCacheModel, \
-    MetadataCacheIndexModel, MetadataCacheModel
-from pychub.package.lifecycle.plan.resolution.metadata.metadata_resolver import MetadataResolver
-from pychub.package.lifecycle.plan.resolution.wheels.wheel_resolver import WheelResolver
+    MetadataCacheIndexModel, MetadataCacheModel, BaseCacheIndexModel, metadata_cache_key, wheel_cache_key, \
+    BaseCacheModel
 
 K = TypeVar("K")  # key type: e.g., str | WheelKey
-E = TypeVar("E")  # entry type: WheelCacheIndexModel | MetadataCacheIndexModel
-M = TypeVar("M", bound=MultiformatModelMixin)  # model type: WheelCacheModel | MetadataCacheModel
+E = TypeVar("E", bound=BaseCacheIndexModel)  # entry type: WheelCacheIndexModel | MetadataCacheIndexModel
+M = TypeVar("M", bound=BaseCacheModel)  # model type: WheelCacheModel | MetadataCacheModel
 
 _CACHE_MAX_SIZE: int = 100_000  # More than this would be A LOT
-_DEFAULT_TTL_SECONDS: int = 86_400  # 24 hours
+
+
+def _timer() -> float:
+    return datetime.now().timestamp()
+
+def _ttu(_key: str, value: Any, now: float) -> float:
+    exp = getattr(value, "expiration", None)
+    if exp is None:
+        return now
+    if isinstance(exp, datetime):
+        return exp.timestamp()
+    return float(exp)
 
 
 @dataclass(kw_only=True)
@@ -50,6 +61,10 @@ class BasePersistedCache(ABC, Generic[K, E, M]):
         self._cache = self._create_cache()
 
     @abstractmethod
+    def _cache_key(self, key: K) -> str:
+        raise NotImplementedError
+
+    @abstractmethod
     def _create_cache(self) -> Cache:
         """
         Abstract method for creating a cache instance to be implemented by subclasses.
@@ -68,13 +83,15 @@ class BasePersistedCache(ABC, Generic[K, E, M]):
 
     def load(self) -> None:
         """
-        Loads and initializes the cache from a serialized model if the index path exists.
+        Loads the data from the specified index path and initializes the cache
+        with deserialized model entries if the index file exists.
 
-        This method reads a serialized representation of the model stored at the
-        `index_path`, deserializes it using the specified format, and populates the
-        cache with the entries from the deserialized model. If the `index_path` does
-        not exist, the method returns without modifying the cache or performing any
-        operations.
+        This method checks for the existence of the index file at the provided
+        path. If it exists, the content of the file is deserialized into the
+        specified model format. The cache is cleared to ensure it contains only
+        the latest entries, and it is then updated with the deserialized model
+        entries. If the cache has an expiration mechanism, it will also trigger
+        that mechanism.
         """
         if not self.index_path.exists():
             return
@@ -84,20 +101,26 @@ class BasePersistedCache(ABC, Generic[K, E, M]):
         self._cache.clear()
         self._cache.update({entry.key: entry for entry in model})
 
+        expire = getattr(self._cache, "expire", None)
+        if callable(expire):
+            expire()
+
     def flush(self) -> None:
         """
-        Writes the current contents of the cache to a file in the specified format.
+        Flushes the internal cache and writes the indexed model to a file.
 
-        This method serializes the cached items by creating an instance of the
-        provided model class and writing the resulting data to the file at the
-        specified path. The serialization format is determined by the given
-        format string.
+        This method clears the cached data by invoking an expiration function if it
+        exists, then creates a model using the cached items, then serializes it to a file.
         """
+        expire = getattr(self._cache, "expire", None)
+        if callable(expire):
+            expire()
+
         model = self.model_cls(index=dict(self._cache.items()))
         model.to_file(self.index_path, fmt=self.fmt)
 
-    @cachedmethod(attrgetter("_cache"), key=lambda self, key: key)
-    def get(self, key: K) -> Optional[E]:
+    @cachedmethod(attrgetter("_cache"), key=lambda self, key: self._cache_key(key))
+    def get(self, key: K) -> E | None:
         """
         Retrieves the value associated with the specified key from the cache.
 
@@ -115,7 +138,7 @@ class BasePersistedCache(ABC, Generic[K, E, M]):
         return self._get_entry_value(key)
 
     @abstractmethod
-    def _get_entry_value(self, key: K) -> Optional[E]:
+    def _get_entry_value(self, key: K) -> E | None:
         """
         Abstract method to retrieve the value of an entry identified by the given key. This method
         must be implemented by subclasses to define the mechanism for fetching the corresponding
@@ -148,68 +171,63 @@ class WheelCache(BasePersistedCache[str, WheelCacheIndexModel, WheelCacheModel])
             based on a unique URI.
         maxsize (int): Maximum number of entries the cache can hold. Defaults to 100,000.
     """
-    resolver: WheelResolver
+    resolver: WheelArtifactResolver
     maxsize: int = _CACHE_MAX_SIZE
+
+    def _cache_key(self, uri: str) -> str:
+        return wheel_cache_key(uri=uri)
 
     def _create_cache(self):
         return LRUCache(maxsize=self.maxsize)
 
-    def _get_entry_value(self, wheel_uri: str) -> Optional[WheelCacheIndexModel]:
-        return self.resolver.get_wheel_by_uri(wheel_uri)
+    def _get_entry_value(self, wheel_uri: str) -> WheelCacheIndexModel | None:
+        return self.resolver.resolve(uri=wheel_uri)
 
 
 @dataclass(kw_only=True)
-class Pep658Cache(BasePersistedCache[WheelKey, MetadataCacheIndexModel, MetadataCacheModel]):
+class BaseMetadataCache(BasePersistedCache[WheelKey, MetadataCacheIndexModel, MetadataCacheModel]):
     """
-    Represents a persisted cache for PEP 658 metadata with time-to-live functionality.
+    Manages metadata caching with a limited size and time-to-use eviction policy.
 
-    This class is designed to manage and store metadata related to PEP 658 in a
-    cache that has a specified maximum size and time-to-live for its entries.
-    It integrates a metadata resolver for fetching the required information if
-    not found in the cache.
+    Provides functionality for resolving metadata associated with a `WheelKey`
+    using a `MetadataArtifactResolver`. Implements a caching mechanism to store
+    and retrieve metadata efficiently. The cache is backed by a time-limited
+    LRU (Least Recently Used) cache.
 
     Attributes:
-        resolver (MetadataResolver): Resolver instance for retrieving PEP 658 metadata.
-        maxsize (int): Maximum number of entries in the cache. Default is 100,000.
-        ttl_seconds (int): Time-to-live for cache entries, in seconds. Default is 86,400.
+        resolver (MetadataArtifactResolver): The resolver used to fetch metadata
+            associated with a given `WheelKey`.
+        maxsize (int): The maximum number of entries allowed in the cache.
     """
-    resolver: MetadataResolver
+    resolver: MetadataArtifactResolver
     maxsize: int = _CACHE_MAX_SIZE
-    ttl_seconds: int = _DEFAULT_TTL_SECONDS
+
+    def _cache_key(self, key: WheelKey) -> str:
+        return metadata_cache_key(wheel_key=key)
 
     def _create_cache(self):
-        return TTLCache(maxsize=self.maxsize, ttl=self.ttl_seconds)
+        return TLRUCache(maxsize=self.maxsize, ttu=_ttu, timer=_timer)
 
-    def _get_entry_value(self, key: WheelKey) -> Optional[MetadataCacheIndexModel]:
-        return self.resolver.resolve_pep658_metadata(key)
+    def _get_entry_value(self, key: WheelKey) -> MetadataCacheIndexModel | None:
+        return self.resolver.resolve(wheel_key=key)
 
 
 @dataclass(kw_only=True)
-class Pep691Cache(BasePersistedCache[WheelKey, MetadataCacheIndexModel, MetadataCacheModel]):
+class Pep658Cache(BaseMetadataCache):
     """
-    Represents a cache implementation for PEP 691 metadata resolution.
+    Represents a PEP 658 metadata cache.
 
-    This class is a specialized cache that uses a time-to-live (TTL) mechanism to
-    temporarily store resolved metadata for PEP 691 compatibility. The cache leverages
-    a TTL-based storage strategy to maintain a bounded size and ensure that metadata
-    does not persist beyond its usefulness. Intended for use with PEP 691-compliant
-    metadata resolution workflows.
-
-    Attributes:
-        resolver (MetadataResolver): The metadata resolver responsible for resolving
-            PEP 691 metadata.
-        maxsize (int): Maximum number of items the cache can hold before evicting
-            the least recently used items. Defaults to 100,000.
-        ttl_seconds (int): Time-to-live for cache entries, in seconds. Entries are
-            automatically invalidated and removed after this duration. Defaults to
-            86,400 seconds (1 day).
+    This class serves as a specific implementation of a metadata cache to
+    hold information about downloaded PEP 658 metadata files.
     """
-    resolver: MetadataResolver
-    maxsize: int = _CACHE_MAX_SIZE
-    ttl_seconds: int = _DEFAULT_TTL_SECONDS
+    pass
 
-    def _create_cache(self):
-        return TTLCache(maxsize=self.maxsize, ttl=self.ttl_seconds)
+@dataclass(kw_only=True)
+class Pep691Cache(BaseMetadataCache):
+    """
+    Represents a PEP 691 metadata cache.
 
-    def _get_entry_value(self, key: WheelKey) -> Optional[MetadataCacheIndexModel]:
-        return self.resolver.resolve_pep691_metadata(key)
+    This class serves as a specific implementation of a metadata cache to
+    hold information about downloaded PEP 619 metadata files.
+    """
+    pass

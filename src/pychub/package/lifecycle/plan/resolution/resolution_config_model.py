@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from collections.abc import Sequence
-from dataclasses import dataclass
-from dataclasses import field
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import TypeVar, Any
@@ -155,6 +153,32 @@ class Pep691SimpleApiMetadataStrategyConfig(ArtifactResolutionStrategyConfig):
 
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Pep691SimpleApiMetadataStrategyConfig:
+        base_kwargs = cls._base_kwargs_from_mapping(mapping)
+        base_kwargs["base_simple_url"] = mapping.get("base_simple_url", cls.base_simple_url)
+        base_kwargs["request_headers"] = mapping.get("request_headers", cls.request_headers)
+        return cls(**base_kwargs)
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class Pep658SidecarMetadataStrategyConfig(ArtifactResolutionStrategyConfig):
+    name: str = field(default="pep658-sidecar-metadata")
+    precedence: int = field(default=90)
+    strategy_type: StrategyType = field(default=StrategyType.DEPENDENCY_METADATA)  # <-- fix
+    strategy_subtype: str = field(default="pep658_sidecar")
+
+    base_simple_url: str = field(default="https://pypi.org/simple")
+    request_headers: dict[str, str] = field(default_factory=_default_request_headers)
+
+    def to_mapping(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        mapping = super().to_mapping(*args, **kwargs)
+        mapping.update({
+            "base_simple_url": self.base_simple_url,
+            "request_headers": self.request_headers,
+        })
+        return mapping
+
+    @classmethod
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> "Pep658SidecarMetadataStrategyConfig":
         base_kwargs = cls._base_kwargs_from_mapping(mapping)
         base_kwargs["base_simple_url"] = mapping.get("base_simple_url", cls.base_simple_url)
         base_kwargs["request_headers"] = mapping.get("request_headers", cls.request_headers)

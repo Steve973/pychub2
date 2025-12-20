@@ -72,10 +72,13 @@ def run(chubproject_path: Path | None = None) -> BuildPlan:
                 message=opts_msg))
         metadata_resolver = init_metadata_resolver()
         wheel_resolver = init_wheel_resolver()
-        var_token = current_packaging_context.set(PackagingContext(
-            build_plan=build_plan,
-            metadata_resolver=metadata_resolver,
-            wheel_resolver=wheel_resolver))
+        # TODO: Populate these for real now that the resolvers are all separate
+        var_token = current_packaging_context.set(
+            PackagingContext(
+                build_plan=build_plan,
+                pep658_resolver=metadata_resolver,
+                pep691_resolver=metadata_resolver,
+                wheel_resolver=wheel_resolver))
         cache_path, must_exit = init_project(chubproject_path)
         if must_exit == ImmediateOutcome.EXIT:
             build_plan.audit_log.append(
