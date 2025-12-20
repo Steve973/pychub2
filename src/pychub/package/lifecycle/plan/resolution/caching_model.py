@@ -19,10 +19,6 @@ _EXPIRATION_MINUTES = 1440
 E = TypeVar("E", bound=MultiformatModelMixin)  # Cache entry model type
 
 
-def metadata_cache_key(wheel_key: WheelKey) -> str:
-    return f"{canonicalize_name(wheel_key.name)}=={wheel_key.version}"
-
-
 def get_uri_info(uri: str) -> tuple[str, str, str, WheelKey, str | None]:
     filename = _wheel_filename_from_uri(uri)
     name, version, _, tagset = parse_wheel_filename(filename)
@@ -36,6 +32,10 @@ def wheel_cache_key(uri: str) -> str:
     if chosen_tag is None:
         raise ValueError(f"Could not choose wheel tag for {wheel_key} from {uri}")
     return f"{wheel_key.name}-{wheel_key.version}-{chosen_tag}"
+
+
+def project_cache_key(wheel_key: WheelKey) -> str:
+    return f"{canonicalize_name(wheel_key.name)}"
 
 
 @dataclass(kw_only=True)

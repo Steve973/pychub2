@@ -16,9 +16,13 @@ from pychub.package.lifecycle.audit.build_event_model import audit, BuildEvent, 
 from pychub.package.lifecycle.init import immediate_operations
 from pychub.package.lifecycle.init.project.project_file_analysis import analyze_project
 from pychub.package.lifecycle.plan.resolution.artifact_resolution import MetadataArtifactResolver, WheelArtifactResolver
-from pychub.package.lifecycle.plan.resolution.metadata.metadata_strategy import BaseMetadataResolutionStrategy
-from pychub.package.lifecycle.plan.resolution.resolution_config_model import WheelResolverConfig, MetadataResolverConfig
-from pychub.package.lifecycle.plan.resolution.wheels.wheel_strategy import BaseWheelResolutionStrategy
+from pychub.package.lifecycle.plan.resolution.metadata_strategy import Pep691SimpleApiMetadataStrategy, \
+    Pep658SidecarMetadataStrategy, WheelInspectionMetadataStrategy
+from pychub.package.lifecycle.plan.resolution.resolution_config_model import WheelResolverConfig, \
+    MetadataResolverConfig, FilesystemWheelStrategyConfig, HttpWheelStrategyConfig, \
+    Pep691SimpleApiMetadataStrategyConfig, Pep658SidecarMetadataStrategyConfig, WheelInspectionMetadataStrategyConfig
+from pychub.package.lifecycle.plan.resolution.wheel_strategy import BaseWheelResolutionStrategy, \
+    FilesystemWheelStrategy, HttpWheelStrategy
 
 
 class ImmediateOutcome(Enum):
@@ -183,40 +187,86 @@ def process_options(args: Namespace) -> ChubProject:
             details=cli_details)
 
 
-@audit(StageType.INIT, substage="init_metadata_resolver_strategies")
-def init_metadata_resolver_strategies() -> list[BaseMetadataResolutionStrategy]:
-    return []
+def _resolver_roots() -> tuple[Path, Path]:
+    build_plan = current_packaging_context.get().build_plan
+    if not build_plan.cache_root:
+        build_plan.cache_root = Path(user_cache_dir("pychub"))
+    local_root = build_plan.project_staging_dir
+    global_root = build_plan.cache_root / "global"
+    global_root.mkdir(parents=True, exist_ok=True)
+    return local_root, global_root
 
 
 @audit(StageType.INIT, substage="init_metadata_resolver_config")
 def init_metadata_resolver_config() -> MetadataResolverConfig:
-    return MetadataResolverConfig.from_mapping({})
-
-
-@audit(StageType.INIT, substage="init_metadata_resolver")
-def init_metadata_resolver() -> MetadataArtifactResolver:
-    resolver_config = init_metadata_resolver_config()
-    resolver_strategies = init_metadata_resolver_strategies()
-    # TODO: fix the dest dir path
-    return MetadataArtifactResolver(config=resolver_config, strategies=resolver_strategies, destination_dir=Path.cwd() / "metadata")
-
-
-@audit(StageType.INIT, substage="init_wheel_resolver_strategies")
-def init_wheel_resolver_strategies() -> list[BaseWheelResolutionStrategy]:
-    return []
+    local_root, global_root = _resolver_roots()
+    return MetadataResolverConfig(
+        local_cache_root=local_root,
+        global_cache_root=global_root,
+        # TODO: wire these from configuration
+        project_isolation=True,
+        clear_on_startup=False)
 
 
 @audit(StageType.INIT, substage="init_wheel_resolver_config")
 def init_wheel_resolver_config() -> WheelResolverConfig:
-    return WheelResolverConfig.from_mapping({})
+    local_root, global_root = _resolver_roots()
+    return WheelResolverConfig(
+        local_cache_root=local_root,
+        global_cache_root=global_root,
+        project_isolation=True,
+        clear_on_startup=False)
 
 
-@audit(StageType.INIT, substage="init_wheel_resolver")
-def init_wheel_resolver() -> WheelArtifactResolver:
-    resolver_config = init_wheel_resolver_config()
-    resolver_strategies = init_wheel_resolver_strategies()
-    # TODO: fix the dest dir path
-    return WheelArtifactResolver(config=resolver_config, strategies=resolver_strategies, destination_dir=Path.cwd() / "wheels")
+@audit(StageType.INIT, substage="init_wheel_resolver_strategies")
+def init_wheel_resolver_strategies() -> list[BaseWheelResolutionStrategy]:
+    return [
+        FilesystemWheelStrategy(
+            strategy_config=FilesystemWheelStrategyConfig()),
+        HttpWheelStrategy(
+            strategy_config=HttpWheelStrategyConfig()),
+    ]
+
+
+@audit(StageType.INIT, substage="init_pep691_resolver")
+def init_pep691_resolver() -> MetadataArtifactResolver:
+    cfg = init_metadata_resolver_config()
+    strategies = [
+        Pep691SimpleApiMetadataStrategy(
+            strategy_config=Pep691SimpleApiMetadataStrategyConfig()),
+    ]
+    # destination_dir currently isn’t used by ArtifactResolver resolve-pathing (see note below)
+    return MetadataArtifactResolver(
+        config=cfg,
+        strategies=strategies,
+        destination_dir=cfg.local_cache_root / "metadata")
+
+
+@audit(StageType.INIT, substage="init_pep658_resolver")
+def init_pep658_resolver(wheel_resolver: WheelArtifactResolver) -> MetadataArtifactResolver:
+    cfg = init_metadata_resolver_config()
+    strategies = [
+        Pep658SidecarMetadataStrategy(
+            strategy_config=Pep658SidecarMetadataStrategyConfig()),
+        WheelInspectionMetadataStrategy(
+            strategy_config=WheelInspectionMetadataStrategyConfig(),
+            wheel_resolver=wheel_resolver)
+    ]
+    return MetadataArtifactResolver(
+        config=cfg,
+        strategies=strategies,
+        destination_dir=cfg.local_cache_root / "metadata")
+
+
+@audit(StageType.INIT, substage="init_resolvers")
+def init_resolvers() -> tuple[WheelArtifactResolver, MetadataArtifactResolver, MetadataArtifactResolver]:
+    wheel = WheelArtifactResolver(
+        config=init_wheel_resolver_config(),
+        strategies=init_wheel_resolver_strategies(),
+        destination_dir=_resolver_roots()[0] / "wheels")
+    pep691 = init_pep691_resolver()
+    pep658 = init_pep658_resolver(wheel_resolver=wheel)
+    return wheel, pep658, pep691
 
 
 @audit(StageType.INIT)

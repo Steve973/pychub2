@@ -8,8 +8,7 @@ from pychub.package.context_vars import current_packaging_context
 from pychub.package.domain.buildplan_model import BuildPlan
 from pychub.package.lifecycle.audit.audit_emitter import emit_audit_log
 from pychub.package.lifecycle.audit.build_event_model import BuildEvent, StageType, EventType, audit
-from pychub.package.lifecycle.init.initializer import init_project, ImmediateOutcome, init_metadata_resolver, \
-    init_wheel_resolver
+from pychub.package.lifecycle.init.initializer import init_project, ImmediateOutcome, init_resolvers
 from pychub.package.lifecycle.packaging_context import PackagingContext
 from pychub.package.lifecycle.plan.planner import plan_build
 
@@ -70,14 +69,12 @@ def run(chubproject_path: Path | None = None) -> BuildPlan:
                 StageType.LIFECYCLE,
                 EventType.INPUT,
                 message=opts_msg))
-        metadata_resolver = init_metadata_resolver()
-        wheel_resolver = init_wheel_resolver()
-        # TODO: Populate these for real now that the resolvers are all separate
+        wheel_resolver, pep658_resolver, pep691_resolver = init_resolvers()
         var_token = current_packaging_context.set(
             PackagingContext(
                 build_plan=build_plan,
-                pep658_resolver=metadata_resolver,
-                pep691_resolver=metadata_resolver,
+                pep658_resolver=pep658_resolver,
+                pep691_resolver=pep691_resolver,
                 wheel_resolver=wheel_resolver))
         cache_path, must_exit = init_project(chubproject_path)
         if must_exit == ImmediateOutcome.EXIT:

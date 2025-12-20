@@ -16,12 +16,16 @@ from pychub.package.lifecycle.plan.resolution.caching_model import (
     WheelCacheIndexModel,
     MetadataCacheModel,
     MetadataCacheIndexModel,
-    BaseCacheIndexModel, wheel_cache_key, metadata_cache_key, get_uri_info,
+    BaseCacheIndexModel,
+    wheel_cache_key,
+    get_uri_info,
+    project_cache_key,
 )
 from pychub.package.lifecycle.plan.resolution.resolution_config_model import (
     BaseResolverConfig,
     WheelResolverConfig,
-    MetadataResolverConfig, StrategyType,
+    MetadataResolverConfig,
+    StrategyType,
 )
 
 # Your existing result object stays the same shape.
@@ -29,6 +33,21 @@ HASH_ALGORITHM = "sha256"
 
 
 def compute_hash_and_size(path: Path) -> tuple[str, int]:
+    """
+    Computes the SHA-256 hash and the size of a file specified by the given path.
+
+    This function reads the file in chunks, calculates its SHA-256 hash,
+    and determines its total size in bytes. It is designed to work for
+    large files by reading them in manageable-sized blocks.
+
+    Args:
+        path (Path): The path to the file for which the hash and size
+            are to be computed.
+
+    Returns:
+        tuple[str, int]: A tuple containing the SHA-256 hash as a string
+            and the size of the file in bytes as an integer.
+    """
     h = sha256()
     size = 0
     with path.open("rb") as f:
@@ -43,6 +62,25 @@ def compute_hash_and_size(path: Path) -> tuple[str, int]:
 
 @dataclass(kw_only=True, frozen=True)
 class ArtifactResolutionResult(MultiformatModelMixin):
+    """
+    Represents the result of resolving an artifact in a computing or data processing
+    context.
+
+    The class encapsulates the details of an artifact such as its unique identifier,
+    location in the filesystem, origin, integrity details, and metadata related to
+    its size and timestamp. It provides mechanisms to serialize and deserialize
+    the artifact information into dictionary-based mappings, supporting seamless
+    interoperability with external systems.
+
+    Attributes:
+        id (str): A unique identifier for the artifact.
+        path (Path): The filesystem path where the artifact is stored.
+        origin_uri (str): The URI describing the origin or source of the artifact.
+        hash_algorithm (str): The algorithm used to compute the artifact's hash.
+        hash (str): The hash value of the artifact, used for verifying integrity.
+        size_bytes (int): The size of the artifact in bytes.
+        timestamp (datetime): The timestamp indicating when the artifact was resolved.
+    """
     id: str
     path: Path
     origin_uri: str
@@ -83,11 +121,23 @@ TEntry = TypeVar("TEntry", bound=BaseCacheIndexModel)
 
 class ArtifactResolver(ABC, Generic[TConfig, TStrategy, TRef, TEntry]):
     """
-    Coordinator that:
-      - computes a deterministic cache key
-      - checks cache
-      - on miss, runs strategies
-      - records cache index entry
+    ArtifactResolver is an abstract base class that provides a framework
+    for resolving, caching, and managing artifacts using configurable strategies.
+
+    This class is designed to support the resolution of artifacts through
+    different strategies while leveraging caching mechanisms for efficiency.
+    It enforces the implementation of specific cache and resolution methods
+    in concrete subclasses to support various use cases. The coordinator flow
+    method, `resolve`, is a comprehensive implementation that ties all the
+    steps together to manage artifact resolution seamlessly.
+
+    Attributes:
+        config (TConfig): Configuration object defining properties and settings
+            related to artifact resolution and caching behavior.
+        strategies (Sequence[TStrategy]): Collection of strategies used
+            to resolve artifacts.
+        destination_dir (Path): Path to the directory where resolved artifacts
+            are stored.
     """
 
     config: TConfig
@@ -151,7 +201,9 @@ class ArtifactResolver(ABC, Generic[TConfig, TStrategy, TRef, TEntry]):
         if resolved is None:
             return None
 
-        entry = self._cache_put(resolved=resolved, wheel_key=wheel_key, uri=uri)
+        resolved_path, origin_uri = resolved
+
+        entry = self._cache_put(resolved=resolved, wheel_key=wheel_key, uri=origin_uri)
         return entry
 
 
@@ -166,8 +218,23 @@ def _wheel_filename_from_uri(uri: str) -> str:
 
 class WheelArtifactResolver(ArtifactResolver[WheelResolverConfig, Any, str, WheelCacheIndexModel]):
     """
-    Ref is a URI (string). Your higher layer can resolve WheelKey->URI using Pep691Metadata,
-    then call into here. Keeps this resolver dumb and focused.
+    Resolves and manages wheel artifacts within a caching system.
+
+    This class is responsible for handling wheel artifacts, including caching
+    wheel files, computing cache keys, and managing expiration policies. It
+    leverages strategies for resolving wheel artifacts, ensuring compatibility
+    with specific configurations, and efficiently storing relevant metadata in
+    a cache index.
+
+    Attributes:
+        config (WheelResolverConfig): The configuration used to define behavior
+            and constraints for resolving wheel artifacts.
+
+        strategies (Sequence[Any]): A list of resolution strategies to apply when
+            retrieving wheel artifacts.
+
+        destination_dir (Path): The directory where resolved artifacts will
+            ultimately be stored.
     """
 
     _index: WheelCacheModel
@@ -221,13 +288,17 @@ class WheelArtifactResolver(ArtifactResolver[WheelResolverConfig, Any, str, Whee
         self._index.put(model)
         return model
 
-    def _run_strategies(self, *, wheel_key: WheelKey | None, uri: str | None) -> tuple[Path, str] | None:
+    def _run_strategies(
+            self,
+            *,
+            wheel_key: WheelKey | None,
+            uri: str | None) -> tuple[Path, str] | None:
         if uri is None:
             return None
         for strat in sorted(self.strategies, key=lambda s: s.strategy_config.precedence):
             # follows your new base strategy shape: resolve(dest_dir, **kwargs)
             try:
-                p = strat.resolve(dest_dir=self.cache_root, uri=uri)
+                p = strat.resolve(dest_dir=self._artifact_dir(), uri=uri)
             except Exception:
                 continue
 
@@ -242,16 +313,42 @@ class WheelArtifactResolver(ArtifactResolver[WheelResolverConfig, Any, str, Whee
 # -------------------------------------------------------------------
 
 class MetadataArtifactResolver(ArtifactResolver[MetadataResolverConfig, Any, WheelKey, MetadataCacheIndexModel]):
+    """
+    Provides an artifact resolver specifically for resolving metadata artifacts.
+
+    This class supports caching and execution of strategies to resolve metadata
+    artifacts. It manages a metadata cache with expiration capabilities and uses
+    a set of strategies to fetch and process metadata based on the configuration
+    and a wheel key.
+
+    Attributes:
+        config (MetadataResolverConfig): Resolver configuration used to define
+            the behavior of strategies and cache.
+        strategies (Sequence[Any]): A sequence of strategies to be executed to
+            resolve metadata artifacts, prioritized by their defined precedence.
+        destination_dir (Path): Path to the directory where resolved artifacts
+            are stored.
+    """
     _index: MetadataCacheModel
 
     def __init__(self, config: MetadataResolverConfig, strategies: Sequence[Any], destination_dir: Path):
         super().__init__(config=config, strategies=strategies, destination_dir=destination_dir)
         self._index = MetadataCacheModel()
 
+    def _artifact_dir(self) -> Path:
+        d = self.cache_root / "metadata"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
     def _cache_key_for(self, *, wheel_key: WheelKey | None, uri: str | None) -> str:
         if wheel_key is None:
             raise ValueError("Cannot compute cache key for metadata resolver without wheel key")
-        return metadata_cache_key(wheel_key=wheel_key)
+        metadata_type: StrategyType = getattr(self.config, "strategy_type", StrategyType.UNSPECIFIED)
+        if metadata_type == StrategyType.DEPENDENCY_METADATA:
+            if uri is None:
+                raise ValueError("Cannot compute cache key for metadata resolver without URI")
+            return wheel_cache_key(uri)
+        return project_cache_key(wheel_key)
 
     def _cache_get(self, cache_key: str) -> MetadataCacheIndexModel | None:
         return self._index.get(cache_key)
@@ -264,7 +361,7 @@ class MetadataArtifactResolver(ArtifactResolver[MetadataResolverConfig, Any, Whe
             uri: str | None) -> MetadataCacheIndexModel:
         if wheel_key is None:
             raise ValueError("Cannot cache metadata without wheel key")
-        cache_key = metadata_cache_key(wheel_key=wheel_key)
+        cache_key = self._cache_key_for(wheel_key=wheel_key, uri=uri)
         now = datetime.now().replace(microsecond=0)
         exp = now + self.expiration_delta
         file_hash, size_bytes = compute_hash_and_size(resolved[0])
@@ -287,7 +384,7 @@ class MetadataArtifactResolver(ArtifactResolver[MetadataResolverConfig, Any, Whe
     def _run_strategies(self, *, wheel_key: WheelKey | None, uri: str | None) -> tuple[Path, str] | None:
         for strat in sorted(self.strategies, key=lambda s: s.strategy_config.precedence):
             try:
-                p = strat.resolve(dest_dir=self.cache_root, wheel_key=wheel_key, uri=uri)
+                p = strat.resolve(dest_dir=self._artifact_dir(), wheel_key=wheel_key, uri=uri)
             except Exception:
                 continue
 

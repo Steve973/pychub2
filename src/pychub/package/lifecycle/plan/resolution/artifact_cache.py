@@ -14,8 +14,8 @@ from pychub.package.domain.compatibility_model import WheelKey
 from pychub.package.lifecycle.plan.resolution.artifact_resolution import MetadataArtifactResolver
 from pychub.package.lifecycle.plan.resolution.artifact_resolution import WheelArtifactResolver
 from pychub.package.lifecycle.plan.resolution.caching_model import WheelCacheIndexModel, WheelCacheModel, \
-    MetadataCacheIndexModel, MetadataCacheModel, BaseCacheIndexModel, metadata_cache_key, wheel_cache_key, \
-    BaseCacheModel
+    MetadataCacheIndexModel, MetadataCacheModel, BaseCacheIndexModel, wheel_cache_key, \
+    BaseCacheModel, project_cache_key
 
 K = TypeVar("K")  # key type: e.g., str | WheelKey
 E = TypeVar("E", bound=BaseCacheIndexModel)  # entry type: WheelCacheIndexModel | MetadataCacheIndexModel
@@ -25,9 +25,35 @@ _CACHE_MAX_SIZE: int = 100_000  # More than this would be A LOT
 
 
 def _timer() -> float:
+    """
+    Gets the current timestamp as a floating-point number.
+
+    This function returns the current time in seconds since the Unix
+    epoch as a floating-point number. The precision includes fractions
+    of a second.
+
+    Returns:
+        float: The current timestamp with fractional seconds precision.
+    """
     return datetime.now().timestamp()
 
+
 def _ttu(_key: str, value: Any, now: float) -> float:
+    """
+    Calculates the expiration time-to-use (TTU) for a given object based on its
+    expiration attribute. If the object does not have an expiration attribute, the
+    current time is returned. Supports both `datetime` and numerical expiration
+    values.
+
+    Args:
+        _key (str): A key identifier (not used directly in this function).
+        value (Any): The input object whose expiration is being evaluated.
+        now (float): The current time represented as a UNIX timestamp.
+
+    Returns:
+        float: The expiration time-to-use timestamp. If no expiration is set on
+        the input object, it returns the value of `now`.
+    """
     exp = getattr(value, "expiration", None)
     if exp is None:
         return now
@@ -38,7 +64,8 @@ def _ttu(_key: str, value: Any, now: float) -> float:
 
 @dataclass(kw_only=True)
 class BasePersistedCache(ABC, Generic[K, E, M]):
-    """Base class for persisted artifact (wheel and metadata) caches.
+    """
+    Base class for persisted artifact (wheel and metadata) caches.
 
     This abstract base class provides a structure for a persisted cache, allowing for
     custom implementations of the underlying cache mechanism and handling of stored
@@ -203,7 +230,7 @@ class BaseMetadataCache(BasePersistedCache[WheelKey, MetadataCacheIndexModel, Me
     maxsize: int = _CACHE_MAX_SIZE
 
     def _cache_key(self, key: WheelKey) -> str:
-        return metadata_cache_key(wheel_key=key)
+        return project_cache_key(wheel_key=key)
 
     def _create_cache(self):
         return TLRUCache(maxsize=self.maxsize, ttu=_ttu, timer=_timer)
@@ -220,7 +247,11 @@ class Pep658Cache(BaseMetadataCache):
     This class serves as a specific implementation of a metadata cache to
     hold information about downloaded PEP 658 metadata files.
     """
+
+    def _cache_key(self, key: WheelKey) -> str:
+        return wheel_cache_key(wheel_key=key)
     pass
+
 
 @dataclass(kw_only=True)
 class Pep691Cache(BaseMetadataCache):
@@ -230,4 +261,6 @@ class Pep691Cache(BaseMetadataCache):
     This class serves as a specific implementation of a metadata cache to
     hold information about downloaded PEP 619 metadata files.
     """
-    pass
+
+    def _cache_key(self, key: WheelKey) -> str:
+        return project_cache_key(key)
