@@ -20,6 +20,7 @@ from pychub.package.lifecycle.plan.resolution.caching_model import (
     wheel_cache_key,
     get_uri_info,
     project_cache_key,
+    metadata_cache_key,
 )
 from pychub.package.lifecycle.plan.resolution.resolution_config_model import (
     BaseResolverConfig,
@@ -345,9 +346,7 @@ class MetadataArtifactResolver(ArtifactResolver[MetadataResolverConfig, Any, Whe
             raise ValueError("Cannot compute cache key for metadata resolver without wheel key")
         metadata_type: StrategyType = getattr(self.config, "strategy_type", StrategyType.UNSPECIFIED)
         if metadata_type == StrategyType.DEPENDENCY_METADATA:
-            if uri is None:
-                raise ValueError("Cannot compute cache key for metadata resolver without URI")
-            return wheel_cache_key(uri)
+            return metadata_cache_key(wheel_key)
         return project_cache_key(wheel_key)
 
     def _cache_get(self, cache_key: str) -> MetadataCacheIndexModel | None:

@@ -15,7 +15,7 @@ from pychub.package.lifecycle.plan.resolution.artifact_resolution import Metadat
 from pychub.package.lifecycle.plan.resolution.artifact_resolution import WheelArtifactResolver
 from pychub.package.lifecycle.plan.resolution.caching_model import WheelCacheIndexModel, WheelCacheModel, \
     MetadataCacheIndexModel, MetadataCacheModel, BaseCacheIndexModel, wheel_cache_key, \
-    BaseCacheModel, project_cache_key
+    BaseCacheModel, project_cache_key, metadata_cache_key
 
 K = TypeVar("K")  # key type: e.g., str | WheelKey
 E = TypeVar("E", bound=BaseCacheIndexModel)  # entry type: WheelCacheIndexModel | MetadataCacheIndexModel
@@ -249,7 +249,7 @@ class Pep658Cache(BaseMetadataCache):
     """
 
     def _cache_key(self, key: WheelKey) -> str:
-        return wheel_cache_key(wheel_key=key)
+        return metadata_cache_key(wheel_key=key)
     pass
 
 

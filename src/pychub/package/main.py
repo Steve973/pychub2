@@ -4,13 +4,13 @@ import sys
 from pathlib import Path
 
 from pychub.helper.sys_check_utils import check_python_version, verify_pip
-from pychub.package.context_vars import current_packaging_context
 from pychub.package.domain.buildplan_model import BuildPlan
 from pychub.package.lifecycle.audit.audit_emitter import emit_audit_log
 from pychub.package.lifecycle.audit.build_event_model import BuildEvent, StageType, EventType, audit
 from pychub.package.lifecycle.init.initializer import init_project, ImmediateOutcome, init_resolvers
 from pychub.package.lifecycle.packaging_context import PackagingContext
 from pychub.package.lifecycle.plan.planner import plan_build
+from pychub.package.packaging_context_vars import current_packaging_context
 
 
 @audit(StageType.LIFECYCLE, substage="system_check")

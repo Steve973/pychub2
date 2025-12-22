@@ -12,7 +12,6 @@ from packaging.utils import canonicalize_name, parse_wheel_filename
 
 from pychub.helper.strategy_loader import load_strategies_base
 from pychub.helper.wheel_tag_utils import choose_wheel_tag
-from pychub.package.context_vars import current_packaging_context
 from pychub.package.domain.compatibility_model import WheelKey
 from pychub.package.lifecycle.plan.resolution.artifact_resolution import WheelArtifactResolver
 from pychub.package.lifecycle.plan.resolution.artifact_resolution_strategy import ArtifactResolutionStrategy, \
@@ -23,6 +22,7 @@ from pychub.package.lifecycle.plan.resolution.resolution_config_model import (
     Pep691SimpleApiMetadataStrategyConfig,
     WheelInspectionMetadataStrategyConfig,
 )
+from pychub.package.packaging_context_vars import current_packaging_context
 
 ENTRYPOINT_GROUP = "pychub.metadata_resolution_strategies"
 PACKAGE_NAME = __name__.rsplit(".", 1)[0]

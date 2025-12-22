@@ -10,8 +10,8 @@ from types import MappingProxyType
 from typing import Any, ParamSpec, TypeVar
 
 from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
-from pychub.package.context_vars import current_packaging_context
 from pychub.package.domain.buildplan_model import BuildPlan
+from pychub.package.packaging_context_vars import current_packaging_context
 
 P = ParamSpec("P")
 R = TypeVar("R")

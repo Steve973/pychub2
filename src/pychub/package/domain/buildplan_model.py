@@ -16,6 +16,7 @@ from pychub.package.domain.artifacts_model import WheelCollection, Scripts, Incl
 from pychub.package.domain.compatibility_model import CompatibilitySpec
 from pychub.package.domain.project_model import ChubProject
 from pychub.package.lifecycle.audit.build_event_model import BuildEvent
+from pychub.package.lifecycle.plan.resolution.resolution_context_vars import ResolutionContext
 
 
 @dataclass(frozen=False, kw_only=True)
@@ -46,6 +47,7 @@ class BuildPlan(MultiformatModelMixin):
         project_hash (str): Unique identifier or hash of the Chub project directory,
             used for staging organization.
         pychub_version (str): The version of Pychub used to create this build plan.
+        resolution_contexts (list[ResolutionContext]): Resolution contexts for the build.
         wheels (WheelCollection): Collection of wheels to be included in the build.
     """
 
@@ -73,6 +75,8 @@ class BuildPlan(MultiformatModelMixin):
     project_hash: str = field(default="")
     # The version of pychub that created this plan
     pychub_version: str = field(default_factory=lambda: get_version("pychub"))
+    # The resolution context list for the build
+    resolution_contexts: list[ResolutionContext] = field(default_factory=list)
     # Wheels to be staged in the build
     wheels: WheelCollection = field(default_factory=WheelCollection)
 
@@ -120,6 +124,7 @@ class BuildPlan(MultiformatModelMixin):
             project_dir=Path(mapping.get("project_dir") or "."),
             project_hash=mapping.get("project_hash", ""),
             pychub_version=mapping.get("pychub_version", get_version("pychub")),
+            resolution_contexts=[ResolutionContext.from_mapping(ctx) for ctx in mapping.get("resolution_contexts", [])],
             wheels=WheelCollection.from_mapping(mapping.get("wheels", [])))
 
     # ------------------------------------------------------------------ #
@@ -158,6 +163,7 @@ class BuildPlan(MultiformatModelMixin):
             "project_dir": str(self.project_dir),
             "project_hash": self.project_hash,
             "pychub_version": self.pychub_version,
+            "resolution_contexts": [ctx.to_mapping() for ctx in self.resolution_contexts],
             "wheels": self.wheels.to_mapping(),
         }
         derived = {
@@ -205,6 +211,7 @@ class BuildPlan(MultiformatModelMixin):
             'project_hash': (str, 'project_hash str'),
             'pychub_version': (str, 'pychub_version str'),
             'resolved_python_versions': (list, 'resolved_python_versions list[str]'),
+            'resolution_contexts': (list, 'resolution_contexts list[ResolutionContext]'),
             'wheels': (WheelCollection, 'wheels WheelCollection'),
         }
 

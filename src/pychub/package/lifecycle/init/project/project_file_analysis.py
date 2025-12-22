@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from pychub.helper.toml_utils import load_toml_file
-from pychub.package.context_vars import current_packaging_context
 from pychub.package.lifecycle.audit.build_event_model import audit, StageType, EventType, LevelType, BuildEvent
 from pychub.package.lifecycle.init.project.project_path_strategy import ProjectPathStrategy, load_strategies
+from pychub.package.packaging_context_vars import current_packaging_context
 
 
 @audit(StageType.INIT, substage="collect_path_dependency_wheel_locations")

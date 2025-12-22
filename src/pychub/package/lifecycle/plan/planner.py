@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pychub.package.context_vars import current_packaging_context
 from pychub.package.lifecycle.audit.build_event_model import audit, StageType
 from pychub.package.lifecycle.plan.compatibility.compatibility_resolver import resolve_compatibility
+from pychub.package.packaging_context_vars import current_packaging_context
 
 
 @audit(StageType.PLAN)

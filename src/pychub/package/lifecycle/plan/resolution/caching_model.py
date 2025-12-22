@@ -14,6 +14,7 @@ from pychub.helper.wheel_tag_utils import choose_wheel_tag
 from pychub.package.domain.compatibility_model import WheelKey
 from pychub.package.lifecycle.plan.resolution.artifact_resolution import _wheel_filename_from_uri
 from pychub.package.lifecycle.plan.resolution.resolution_config_model import StrategyType
+from pychub.package.lifecycle.plan.resolution.resolution_context_vars import current_resolution_context
 
 _EXPIRATION_MINUTES = 1440
 E = TypeVar("E", bound=MultiformatModelMixin)  # Cache entry model type
@@ -31,7 +32,15 @@ def wheel_cache_key(uri: str) -> str:
     filename, name, version, wheel_key, chosen_tag = get_uri_info(uri)
     if chosen_tag is None:
         raise ValueError(f"Could not choose wheel tag for {wheel_key} from {uri}")
-    return f"{wheel_key.name}-{wheel_key.version}-{chosen_tag}"
+    return f"{canonicalize_name(wheel_key.name)}-{wheel_key.version}-{chosen_tag}"
+
+
+def metadata_cache_key(wheel_key: WheelKey) -> str:
+    try:
+        context_tag = str(current_resolution_context.get().tag)
+        return f"{canonicalize_name(wheel_key.name)}-{wheel_key.version}-{context_tag}"
+    except LookupError:
+        raise ValueError("The current resolution context must be set before creating a metadata cache key")
 
 
 def project_cache_key(wheel_key: WheelKey) -> str:

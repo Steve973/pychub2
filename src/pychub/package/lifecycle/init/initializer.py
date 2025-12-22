@@ -10,7 +10,6 @@ from appdirs import user_cache_dir
 
 from pychub.package.cli import parse_cli
 from pychub.package.constants import CHUBPROJECT_FILENAME
-from pychub.package.context_vars import current_packaging_context
 from pychub.package.domain.project_model import ChubProject, SourceKind
 from pychub.package.lifecycle.audit.build_event_model import audit, BuildEvent, StageType, EventType
 from pychub.package.lifecycle.init import immediate_operations
@@ -23,6 +22,7 @@ from pychub.package.lifecycle.plan.resolution.resolution_config_model import Whe
     Pep691SimpleApiMetadataStrategyConfig, Pep658SidecarMetadataStrategyConfig, WheelInspectionMetadataStrategyConfig
 from pychub.package.lifecycle.plan.resolution.wheel_strategy import BaseWheelResolutionStrategy, \
     FilesystemWheelStrategy, HttpWheelStrategy
+from pychub.package.packaging_context_vars import current_packaging_context
 
 
 class ImmediateOutcome(Enum):
