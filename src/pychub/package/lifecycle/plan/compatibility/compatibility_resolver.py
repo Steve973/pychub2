@@ -40,7 +40,7 @@ class ImplMarkerProfile:
     platform_python_implementation: str  # PEP 508: platform_python_implementation (pretty)
 
 
-_OS_PREFIX_TO_FAMILY: dict[str, str] = {
+_OS_PREFIX_TO_FAMILY: dict[str, str | None] = {
     "any": None,
     "linux": "linux",
     "macosx": "macos",
@@ -415,7 +415,7 @@ def _marker_environment() -> dict[str, str]:
     }
 
 
-def _first_prefix_match(value: str, prefix_map: dict[str, str]) -> str | None:
+def _first_prefix_match(value: str, prefix_map: dict[str, str | None]) -> str | None:
     for prefix in sorted(prefix_map.keys(), key=len, reverse=True):
         if value.startswith(prefix):
             return prefix_map[prefix]
@@ -532,7 +532,7 @@ def build_resolution_contexts(
             if arch is None:
                 continue
 
-            # Validate arch is allowed for that OS family (if arches list is provided)
+            # Validate arch is allowed for that OS family (if arch list is provided)
             os_spec = compat_spec.platform_values[os_family]
             if os_spec.arches and arch not in os_spec.arches:
                 continue
