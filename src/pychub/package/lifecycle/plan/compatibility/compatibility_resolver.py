@@ -8,6 +8,7 @@ from typing import Any, Iterable
 
 from packaging.requirements import Requirement as PkgRequirement
 from packaging.specifiers import SpecifierSet
+from packaging.tags import Tag
 from packaging.utils import canonicalize_name, parse_wheel_filename
 from packaging.version import Version
 from resolvelib import Resolver, ResolutionImpossible, BaseReporter
@@ -25,15 +26,27 @@ from pychub.package.lifecycle.plan.resolution.resolution_context_vars import Res
     current_resolution_context
 from pychub.package.packaging_context_vars import current_packaging_context
 
-# ^ use whatever module you put ResolutionContext/current_resolution_context into
+
+@dataclass(frozen=True, slots=True)
+class OsMarkerProfile:
+    sys_platform: str  # PEP 508: sys_platform
+    platform_system: str  # PEP 508: platform_system
+    os_name: str  # PEP 508: os_name
+
+
+@dataclass(frozen=True, slots=True)
+class ImplMarkerProfile:
+    implementation_name: str  # PEP 508: implementation_name (lowercase)
+    platform_python_implementation: str  # PEP 508: platform_python_implementation (pretty)
 
 
 _OS_PREFIX_TO_FAMILY: dict[str, str] = {
+    "any": None,
+    "linux": "linux",
+    "macosx": "macos",
     "manylinux": "linux",
     "musllinux": "linux",
-    "linux": "linux",
     "win": "windows",
-    "macosx": "macos",
 }
 
 _IMPL_PREFIX_TO_NAME: dict[str, str] = {
@@ -41,6 +54,34 @@ _IMPL_PREFIX_TO_NAME: dict[str, str] = {
     "pp": "pypy",
     # "py" intentionally omitted: doesn't encode implementation
 }
+
+# Your ResolutionContext.os_family currently looks like: linux | windows | macos
+# These map to the marker dialect values people actually use.
+OS_FAMILY_MARKER_PROFILES: dict[str, OsMarkerProfile] = {
+    "linux": OsMarkerProfile(sys_platform="linux", platform_system="Linux", os_name="posix"),
+    "windows": OsMarkerProfile(sys_platform="win32", platform_system="Windows", os_name="nt"),
+    "macos": OsMarkerProfile(sys_platform="darwin", platform_system="Darwin", os_name="posix"),
+}
+
+DEFAULT_OS_MARKER_PROFILE = OsMarkerProfile(sys_platform="unknown", platform_system="Unknown", os_name="posix")
+
+IMPL_MARKER_PROFILES: dict[str, ImplMarkerProfile] = {
+    "cp": ImplMarkerProfile("cpython", "CPython"),
+    "cpython": ImplMarkerProfile("cpython", "CPython"),
+    "pp": ImplMarkerProfile("pypy", "PyPy"),
+    "pypy": ImplMarkerProfile("pypy", "PyPy"),
+}
+
+
+def _fallback_impl_profile(raw_impl: str) -> ImplMarkerProfile:
+    # Keep it deterministic, no fancy heuristics.
+    impl = (raw_impl or "").strip().lower() or "unknown"
+    return ImplMarkerProfile(implementation_name=impl, platform_python_implementation=impl.capitalize())
+
+
+def pep691_project_lookup_key(project_name: str) -> WheelKey:
+    return WheelKey(project_name, "0")
+
 
 _ANY_PLATFORM = "any"
 
@@ -172,11 +213,15 @@ class PychubReporter(BaseReporter[ResolverRequirement, ResolverCandidate, str]):
         _audit(substage="pin",
                message=f"pinning candidate: {candidate}")
 
-    def rejecting_candidate(self, criterion: Criterion[ResolverRequirement, ResolverCandidate], candidate: ResolverCandidate) -> None:
+    def rejecting_candidate(
+            self, criterion: Criterion[ResolverRequirement, ResolverCandidate],
+            candidate: ResolverCandidate) -> None:
         _audit(substage="reject",
                message=f"rejecting candidate: {candidate} (criterion={criterion})")
 
-    def resolving_conflicts(self, causes: Collection[RequirementInformation[ResolverRequirement, ResolverCandidate]]) -> None:
+    def resolving_conflicts(
+            self,
+            causes: Collection[RequirementInformation[ResolverRequirement, ResolverCandidate]]) -> None:
         _audit(
             substage="resolving_conflicts",
             message="resolving conflicts",
@@ -241,7 +286,7 @@ class PychubResolverProvider(AbstractProvider[ResolverRequirement, ResolverCandi
         # Materialize banned candidates for this identifier
         banned = set(incompatibilities.get(identifier, iter(())))
 
-        meta_entry = self._pep691.resolve(wheel_key=WheelKey(identifier, "0"))
+        meta_entry = self._pep691.resolve(wheel_key=pep691_project_lookup_key(identifier))
         if meta_entry is None:
             return []
 
@@ -329,6 +374,15 @@ class PychubResolverProvider(AbstractProvider[ResolverRequirement, ResolverCandi
         return deps
 
 
+def _accepted_tags_for_context(ctx: ResolutionContext) -> tuple[Tag, Tag, Tag]:
+    major = ctx.python_version.major
+    minor = ctx.python_version.minor
+    return (
+        ctx.tag,
+        Tag(f"py{major}{minor}", "none", "any"),
+        Tag(f"py{major}", "none", "any"))
+
+
 def _parse_core_metadata(path: Path) -> tuple[str | None, list[str]]:
     """
     Parses METADATA-like content (PEP 658 sidecar, or extracted dist-info METADATA).
@@ -342,24 +396,22 @@ def _parse_core_metadata(path: Path) -> tuple[str | None, list[str]]:
 
 
 def _marker_environment() -> dict[str, str]:
-    """
-    Build a PEP 508-ish marker env from your current ResolutionContext.
-    Keep it pragmatic: fill what you know; you can extend later.
-    """
     ctx = current_resolution_context.get()
-    # Your ctx has: arch, os_family, python_implementation, python_version (Version), tag (Tag)
     py_ver = ctx.python_version
-    impl = (ctx.python_implementation or "").lower()
+    os_key = (ctx.os_family or "").strip().lower()
+    os_profile = OS_FAMILY_MARKER_PROFILES.get(os_key, DEFAULT_OS_MARKER_PROFILE)
+    impl_key = (ctx.python_implementation or "").strip().lower()
+    impl_profile = IMPL_MARKER_PROFILES.get(impl_key, _fallback_impl_profile(impl_key))
 
-    # Marker keys are picky strings; these are the common ones you’ll actually see.
     return {
         "python_version": f"{py_ver.major}.{py_ver.minor}",
         "python_full_version": str(py_ver),
-        "implementation_name": "cpython" if impl in {"cpython", "cp"} else impl,
-        "platform_python_implementation": "CPython" if impl in {"cpython", "cp"} else impl,
-        "platform_system": ctx.os_family,  # e.g. "Linux"
-        "sys_platform": "linux" if ctx.os_family.lower() == "linux" else ctx.os_family.lower(),
-        "platform_machine": ctx.arch,  # e.g. "x86_64"
+        "implementation_name": impl_profile.implementation_name,
+        "platform_python_implementation": impl_profile.platform_python_implementation,
+        "platform_system": os_profile.platform_system,
+        "sys_platform": os_profile.sys_platform,
+        "os_name": os_profile.os_name,
+        "platform_machine": ctx.arch,
     }
 
 
@@ -371,8 +423,6 @@ def _first_prefix_match(value: str, prefix_map: dict[str, str]) -> str | None:
 
 
 def _os_family_from_platform(platform: str) -> str | None:
-    if platform == _ANY_PLATFORM:
-        return None
     return _first_prefix_match(platform, _OS_PREFIX_TO_FAMILY)
 
 
@@ -384,9 +434,11 @@ def _arch_from_platform(platform: str) -> str | None:
 
 
 def _impl_from_interpreter(interpreter: str) -> str | None:
-    if len(interpreter) < 2:
+    if not interpreter:
         return None
-    return _IMPL_PREFIX_TO_NAME.get(interpreter[:2])
+    key = interpreter.lower()
+    prof = IMPL_MARKER_PROFILES.get(key) or IMPL_MARKER_PROFILES.get(key[:2])
+    return prof.implementation_name if prof else None
 
 
 def _parse_interpreter_major_minor(interpreter: str) -> tuple[int | None, int | None] | None:

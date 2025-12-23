@@ -699,6 +699,16 @@ class CompatibilitySpec(MultiformatModelMixin):
         base = self.tags_whitelist if self.tags_specific_only else self.tags.union(self.tags_whitelist)
         return base - self.exclude_tags
 
+    @property
+    def universal_tags(self) -> frozenset[Tag]:
+        self.check_initialized()
+        tags: set[Tag] = {Tag("py3", "none", "any")}
+        for v in self.resolved_python_version_list:
+            ver = Version(v)
+            if ver.major == 3:
+                tags.add(Tag(f"py{ver.major}{ver.minor}", "none", "any"))
+        return frozenset(tags)
+
     def to_mapping(self) -> dict[str, Any]:
         """
         Converts the instance data into a dictionary representation.
