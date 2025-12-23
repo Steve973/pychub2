@@ -1,14 +1,32 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Mapping, Collection, Iterator, Sequence
+from dataclasses import dataclass
+from email.parser import Parser
+from pathlib import Path
+from typing import Any, Iterable
 
+from packaging.requirements import Requirement as PkgRequirement
+from packaging.specifiers import SpecifierSet
+from packaging.utils import canonicalize_name, parse_wheel_filename
 from packaging.version import Version
+from resolvelib import Resolver, ResolutionImpossible, BaseReporter
+from resolvelib.providers import AbstractProvider, Preference
+from resolvelib.resolvers import Criterion
+from resolvelib.structs import RequirementInformation, State, Matches
 
-from pychub.package.domain.compatibility_model import WheelKey, CompatibilitySpec
+from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
+from pychub.package.domain.compatibility_model import CompatibilitySpec
+from pychub.package.domain.compatibility_model import WheelKey
 from pychub.package.domain.project_model import ChubProject
+from pychub.package.lifecycle.audit.build_event_model import BuildEvent, EventType, StageType, LevelType
 from pychub.package.lifecycle.plan.compatibility.compatibility_spec_loader import load_compatibility_spec
-from pychub.package.lifecycle.plan.resolution.resolution_context_vars import ResolutionContext
+from pychub.package.lifecycle.plan.resolution.resolution_context_vars import ResolutionContext, \
+    current_resolution_context
 from pychub.package.packaging_context_vars import current_packaging_context
+
+# ^ use whatever module you put ResolutionContext/current_resolution_context into
+
 
 _OS_PREFIX_TO_FAMILY: dict[str, str] = {
     "manylinux": "linux",
@@ -25,6 +43,324 @@ _IMPL_PREFIX_TO_NAME: dict[str, str] = {
 }
 
 _ANY_PLATFORM = "any"
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ResolverRequirement(MultiformatModelMixin):
+    """
+    A resolvelib requirement: "what I need" (name + version constraints + optional extras).
+
+    Context (tag, arch, os, python version) is provided by the current ResolutionContext
+    via ContextVar, not stored here.
+    """
+    project_name: str
+    specifier_set: SpecifierSet = SpecifierSet()
+    extras: frozenset[str] = frozenset()
+
+    @property
+    def normalized_name(self) -> str:
+        return canonicalize_name(self.project_name)
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {
+            "project_name": self.project_name,
+            "specifier_set": str(self.specifier_set),
+            "extras": sorted(self.extras),
+        }
+
+    @classmethod
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> ResolverRequirement:
+        return cls(
+            project_name=str(mapping["project_name"]),
+            specifier_set=SpecifierSet(str(mapping.get("specifier_set") or "")),
+            extras=frozenset(mapping.get("extras") or []))
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ResolverCandidate(MultiformatModelMixin):
+    """
+    A resolvelib candidate: "a concrete pick" for a requirement (name + one version),
+    plus optional per-context artifact info (download_url) if you choose to carry it.
+
+    Dependencies are discovered through metadata resolution, not stored here.
+    """
+    project_name: str
+    version: Version
+
+    # Optional metadata that can help short-circuit / debugging:
+    requires_python: str | None = None
+
+    # Optional: if you pick a concrete wheel URL for the current context tag during candidate
+    # selection, you can store it here. If you don't, leave it None and resolve later.
+    download_url: str | None = None
+
+    @property
+    def normalized_name(self) -> str:
+        return canonicalize_name(self.project_name)
+
+    @property
+    def wheel_key(self) -> WheelKey:
+        return WheelKey(self.project_name, str(self.version))
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {
+            "project_name": self.project_name,
+            "version": str(self.version),
+            "requires_python": self.requires_python,
+            "download_url": self.download_url,
+        }
+
+    @classmethod
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> ResolverCandidate:
+        return cls(
+            project_name=str(mapping["project_name"]),
+            version=Version(str(mapping["version"])),
+            requires_python=mapping.get("requires_python"),
+            download_url=mapping.get("download_url"))
+
+
+def _safe_resolution_ctx_payload() -> dict[str, Any]:
+    try:
+        ctx: str = current_resolution_context.get().context_key
+    except LookupError:
+        return {"resolution_context": "not available"}
+    return {"resolution_context": ctx}
+
+
+def _audit(*, substage: str, message: str, payload: dict[str, Any] | None = None):
+    audit_log = current_packaging_context.get().build_plan.audit_log
+    merged = {}
+    merged.update(_safe_resolution_ctx_payload())
+    if payload:
+        merged.update(payload)
+
+    audit_log.append(
+        BuildEvent.make(
+            StageType.PLAN,
+            EventType.RESOLVE,
+            level=LevelType.DEBUG,
+            substage=substage,
+            message=message,
+            payload=merged))
+
+
+class PychubReporter(BaseReporter[ResolverRequirement, ResolverCandidate, str]):
+    def starting(self) -> None:
+        _audit(substage="starting",
+               message="resolution starting")
+
+    def starting_round(self, index: int) -> None:
+        _audit(substage="starting_round",
+               message=f"starting round {index}",
+               payload={"round": index})
+
+    def ending_round(self, index: int, state: State[ResolverRequirement, ResolverCandidate, str]) -> None:
+        _audit(substage="ending_round",
+               message=f"ending round {index}",
+               payload={"round": index})
+
+    def ending(self, state) -> None:
+        _audit(substage="ending",
+               message="resolution ending")
+
+    def adding_requirement(self, requirement, parent) -> None:
+        _audit(substage="add_requirement",
+               message=f"adding requirement: {requirement}",
+               payload={"parent": parent})
+
+    def pinning(self, candidate) -> None:
+        _audit(substage="pin",
+               message=f"pinning candidate: {candidate}")
+
+    def rejecting_candidate(self, criterion: Criterion[ResolverRequirement, ResolverCandidate], candidate: ResolverCandidate) -> None:
+        _audit(substage="reject",
+               message=f"rejecting candidate: {candidate} (criterion={criterion})")
+
+    def resolving_conflicts(self, causes: Collection[RequirementInformation[ResolverRequirement, ResolverCandidate]]) -> None:
+        _audit(
+            substage="resolving_conflicts",
+            message="resolving conflicts",
+            payload={"causes": [str(c) for c in causes]})
+
+
+class PychubResolverProvider(AbstractProvider[ResolverRequirement, ResolverCandidate, str]):
+    def __init__(self):
+        pkg_ctx = current_packaging_context.get()
+        self._pep691 = pkg_ctx.pep691_resolver
+        self._pep658 = pkg_ctx.pep658_resolver
+
+    def identify(self, requirement_or_candidate: Any) -> str:
+        # resolvelib wants a stable identifier for "this project"
+        return canonicalize_name(requirement_or_candidate.project_name)
+
+    def get_preference(
+            self,
+            identifier: str,
+            resolutions: Mapping[str, ResolverCandidate],
+            candidates: Mapping[str, Iterator[ResolverCandidate]],
+            information: Mapping[str, Iterator[RequirementInformation[ResolverRequirement, ResolverCandidate]]],
+            backtrack_causes: Sequence[RequirementInformation[ResolverRequirement, ResolverCandidate]]) -> Preference:
+        return 0
+
+    def find_matches(
+            self,
+            identifier: str,
+            requirements: Mapping[str, Iterator[ResolverRequirement]],
+            incompatibilities: Mapping[str, Iterator[ResolverCandidate]]) -> Matches[ResolverCandidate]:
+        """
+        Finds and generates a list of resolver candidates based on the given identifier,
+        requirements, and incompatibilities. This process involves filtering candidates
+        based on specifier constraints, compatibility with tags, and avoiding banned
+        candidates for stability and correctness.
+
+        Args:
+            identifier (str): The package identifier for which to find matches.
+            requirements (Mapping[str, Iterator[ResolverRequirement]]): A mapping of
+                package identifiers to iterators of their respective resolver
+                requirements. Each resolver requirement contains constraints that must
+                be satisfied.
+            incompatibilities (Mapping[str, Iterator[ResolverCandidate]]): A mapping of
+                package identifiers to iterators of resolver candidates which are
+                deemed incompatible and must not be included in the result.
+
+        Returns:
+            Matches[ResolverCandidate]: A sequence of resolver candidates satisfying
+                the provided requirements and not appearing in the list of
+                incompatibilities.
+        """
+        # Combine all specifier constraints for *this* identifier
+        req_iter = requirements.get(identifier, iter(()))
+        req_list = list(req_iter)
+
+        spec: SpecifierSet | None = None
+        for r in req_list:
+            spec = r.specifier_set if spec is None else (spec & r.specifier_set)
+        if spec is None:
+            spec = SpecifierSet()
+
+        # Materialize banned candidates for this identifier
+        banned = set(incompatibilities.get(identifier, iter(())))
+
+        meta_entry = self._pep691.resolve(wheel_key=WheelKey(identifier, "0"))
+        if meta_entry is None:
+            return []
+
+        from pychub.package.domain.compatibility_model import Pep691Metadata
+        project_meta = Pep691Metadata.from_file(path=meta_entry.path, fmt="json")
+
+        ctx_tag = current_resolution_context.get().tag
+
+        # Pick one URL per version that is compatible with ctx_tag
+        best_url_by_version: dict[Version, str] = {}
+        best_filename_by_version: dict[Version, str] = {}
+
+        for f in project_meta.files:
+            if f.yanked or not f.filename.endswith(".whl") or not f.url:
+                continue
+
+            try:
+                _, v, _, tagset = parse_wheel_filename(f.filename)
+            except Exception:
+                continue
+
+            if ctx_tag not in tagset:
+                continue
+
+            ver = Version(str(v))
+            if ver not in spec:
+                continue
+
+            existing = best_url_by_version.get(ver)
+            if existing is None:
+                best_url_by_version[ver] = f.url
+                best_filename_by_version[ver] = f.filename
+            else:
+                # Prefer lexicographically smaller filename as deterministic tie-breaker
+                if f.filename < best_filename_by_version[ver]:
+                    best_url_by_version[ver] = f.url
+                    best_filename_by_version[ver] = f.filename
+
+        # Emit candidates in a stable order (the newest first tends to reduce backtracking)
+        matches: list[ResolverCandidate] = []
+        for ver in sorted(best_url_by_version.keys(), reverse=True):
+            cand = ResolverCandidate(project_name=identifier, version=ver, download_url=best_url_by_version[ver])
+            if cand not in banned:
+                matches.append(cand)
+
+        return matches
+
+    def is_satisfied_by(self, requirement: ResolverRequirement, candidate: ResolverCandidate) -> bool:
+        if candidate.normalized_name != requirement.normalized_name:
+            return False
+        return candidate.version in requirement.specifier_set
+
+    def get_dependencies(self, candidate: ResolverCandidate) -> list[ResolverRequirement]:
+        """
+        Expand dependencies for a chosen candidate under the current context.
+        This is where marker evaluation happens.
+        """
+        entry = self._pep658.resolve(wheel_key=candidate.wheel_key)
+        if entry is None:
+            # No metadata => resolvelib will treat this candidate as a dead-end.
+            return []
+
+        _, requires_dist_lines = _parse_core_metadata(entry.path)
+        env = _marker_environment()
+
+        deps: list[ResolverRequirement] = []
+        for line in requires_dist_lines:
+            try:
+                req = PkgRequirement(line)
+            except Exception:
+                continue
+
+            # Marker filtering (context-sensitive)
+            if req.marker is not None:
+                # Extras: ignore for now (treat as no extras); you can add later.
+                if not req.marker.evaluate(env):
+                    continue
+
+            deps.append(
+                ResolverRequirement(
+                    project_name=req.name,
+                    specifier_set=req.specifier,
+                    extras=frozenset(req.extras)))
+
+        return deps
+
+
+def _parse_core_metadata(path: Path) -> tuple[str | None, list[str]]:
+    """
+    Parses METADATA-like content (PEP 658 sidecar, or extracted dist-info METADATA).
+    Returns: (requires_python, requires_dist_lines)
+    """
+    text = path.read_text(encoding="utf-8", errors="replace")
+    msg = Parser().parsestr(text)
+    requires_python = msg.get("Requires-Python")
+    requires_dist = msg.get_all("Requires-Dist") or []
+    return requires_python, list(requires_dist)
+
+
+def _marker_environment() -> dict[str, str]:
+    """
+    Build a PEP 508-ish marker env from your current ResolutionContext.
+    Keep it pragmatic: fill what you know; you can extend later.
+    """
+    ctx = current_resolution_context.get()
+    # Your ctx has: arch, os_family, python_implementation, python_version (Version), tag (Tag)
+    py_ver = ctx.python_version
+    impl = (ctx.python_implementation or "").lower()
+
+    # Marker keys are picky strings; these are the common ones you’ll actually see.
+    return {
+        "python_version": f"{py_ver.major}.{py_ver.minor}",
+        "python_full_version": str(py_ver),
+        "implementation_name": "cpython" if impl in {"cpython", "cp"} else impl,
+        "platform_python_implementation": "CPython" if impl in {"cpython", "cp"} else impl,
+        "platform_system": ctx.os_family,  # e.g. "Linux"
+        "sys_platform": "linux" if ctx.os_family.lower() == "linux" else ctx.os_family.lower(),
+        "platform_machine": ctx.arch,  # e.g. "x86_64"
+    }
 
 
 def _first_prefix_match(value: str, prefix_map: dict[str, str]) -> str | None:
@@ -91,10 +427,6 @@ def _filter_versions_for_interpreter(interpreter: str, versions: list[Version]) 
         return [v for v in versions if v.major == major]
     return [v for v in versions if v.major == major and v.minor == minor]
 
-
-# ----------------------------
-# Main expansion
-# ----------------------------
 
 def build_resolution_contexts(
         compat_spec: CompatibilitySpec,
@@ -198,46 +530,41 @@ def build_resolution_contexts(
 
 
 def build_dependency_metadata_tree() -> None:
-    """
-    Builds the initial tree of resolved wheel nodes by processing the wheel queue.
+    processed: set[tuple[str, str, str]] = set()
+    pkg_ctx = current_packaging_context.get()
+    build_plan = pkg_ctx.build_plan
 
-    This method iterates through the queue of wheels to resolve their dependencies.
-    Each wheel is processed to extract metadata and determine its dependencies. These
-    dependencies are then resolved and appended to the queue for further processing,
-    if not already processed or present. Finally, wheel nodes are created and added
-    to the internal nodes data structure.
+    provider = PychubResolverProvider()
+    reporter = PychubReporter()
+    resolver = Resolver(provider=provider, reporter=reporter)
 
-    Raises:
-        ValueError: Raised if a dependency version cannot be determined due
-            to an unspecified behavior in `_select_initial_version_for_requirement`.
-    """
-    processed: set[WheelKey] = set()
-    #
-    # while self._wheel_queue:
-    #     wheel = self._wheel_queue.popleft()
-    #
-    #     if wheel in processed:
-    #         continue
-    #     processed.add(wheel)
-    #
-    #     meta: Pep658Metadata = resolve_pep658_metadata(wheel)
-    #     dep_keys: set[WheelKey] = set()
-    #
-    #     for req_str in meta.requires_dist:
-    #         # not sure what to do here with resolvelib
-    #         # or if this is how it would work, but this
-    #         # whole function is a placeholder
-    #         print(f"Resolving dependency {req_str} for {wheel} with resolvelib, somehow!")
-    #
-    #     node = ResolvedWheelNode(
-    #         name=meta.name,
-    #         version=meta.version,
-    #         requires_python=meta.requires_python or "",
-    #         requires_dist=meta.requires_dist,
-    #         dependencies=frozenset(dep_keys),
-    #         tag_urls=None)
-    #
-    #     self._nodes[wheel] = node
+    for resolution_ctx in build_plan.resolution_contexts:
+        token = current_resolution_context.set(resolution_ctx)
+        try:
+            # Build all roots for this context in one call (resolvelib supports multiple roots)
+            root_reqs: list[ResolverRequirement] = []
+            for root_wheel in build_plan.wheels:
+                root_reqs.append(
+                    ResolverRequirement(
+                        project_name=root_wheel.name,
+                        specifier_set=SpecifierSet(f"=={root_wheel.version}")))
+
+            try:
+                result = resolver.resolve(root_reqs)
+            except ResolutionImpossible as e:
+                # record failure on resolution_ctx.result here
+                # resolution_ctx.result.status = FAILED, detail=str(e) ...
+                continue
+
+            # result.mapping: {identifier -> ResolverCandidate}
+            # result.graph: directed graph of decisions (handy for auditing)
+            mapping = result.mapping
+
+            # TODO: turn `mapping` into your persisted graph/node model (ResolvedWheelNode, etc.)
+            # This is where you'd populate your dependency tree structure in the BuildPlan.
+
+        finally:
+            current_resolution_context.reset(token)
 
 
 def init_compatibility_for_plan() -> CompatibilitySpec:

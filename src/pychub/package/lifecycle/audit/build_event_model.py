@@ -170,9 +170,7 @@ def audit(stage: StageType, substage: str | None = None) -> Callable[[Callable[P
                 BuildEvent.make(
                     stage,
                     EventType.START,
-                    substage=substage,
-                )
-            )
+                    substage=substage))
 
             try:
                 result = fn(*args, **kwargs)
@@ -180,9 +178,7 @@ def audit(stage: StageType, substage: str | None = None) -> Callable[[Callable[P
                     BuildEvent.make(
                         stage,
                         EventType.COMPLETE,
-                        substage=substage,
-                    )
-                )
+                        substage=substage))
                 return result
             except Exception as e:
                 plan.audit_log.append(
@@ -191,9 +187,7 @@ def audit(stage: StageType, substage: str | None = None) -> Callable[[Callable[P
                         EventType.EXCEPTION,
                         LevelType.ERROR,
                         substage=substage,
-                        message=str(e),
-                    )
-                )
+                        message=str(e)))
                 raise
 
         return wrapper
