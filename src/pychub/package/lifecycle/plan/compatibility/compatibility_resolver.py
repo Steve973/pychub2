@@ -17,11 +17,13 @@ from resolvelib.resolvers import Criterion
 from resolvelib.structs import RequirementInformation, State, Matches
 
 from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
-from pychub.package.domain.compatibility_model import CompatibilitySpec
+from pychub.helper.wheel_tag_utils import choose_wheel_tag
+from pychub.package.domain.compatibility_model import CompatibilitySpec, WheelKeyMetadata
 from pychub.package.domain.compatibility_model import WheelKey
 from pychub.package.domain.project_model import ChubProject
 from pychub.package.lifecycle.audit.build_event_model import BuildEvent, EventType, StageType, LevelType
 from pychub.package.lifecycle.plan.compatibility.compatibility_spec_loader import load_compatibility_spec
+from pychub.package.lifecycle.plan.resolution.artifact_resolution import _wheel_filename_from_uri
 from pychub.package.lifecycle.plan.resolution.resolution_context_vars import ResolutionContext, \
     current_resolution_context
 from pychub.package.packaging_context_vars import current_packaging_context
@@ -29,6 +31,22 @@ from pychub.package.packaging_context_vars import current_packaging_context
 
 @dataclass(frozen=True, slots=True)
 class OsMarkerProfile:
+    """
+    Represents a profile containing OS marker data following PEP 508 specifications.
+
+    This class is a data structure designed to store platform-specific information
+    used for identifying or matching operating systems. The attributes in this class
+    align with the fields defined in the PEP 508 environment markers, such as
+    `sys_platform`, `platform_system`, and `os_name`.
+
+    Attributes:
+        sys_platform (str): Represents the `sys_platform` value from PEP 508,
+            typically identifying the platform (e.g., 'win32', 'linux').
+        platform_system (str): Represents the `platform_system` value from PEP 508,
+            typically identifying the operating system name (e.g., 'Windows', 'Linux').
+        os_name (str): Represents the `os_name` value from PEP 508,
+            typically aligning with the `os.name` field in Python (e.g., 'posix', 'nt').
+    """
     sys_platform: str  # PEP 508: sys_platform
     platform_system: str  # PEP 508: platform_system
     os_name: str  # PEP 508: os_name
@@ -36,6 +54,20 @@ class OsMarkerProfile:
 
 @dataclass(frozen=True, slots=True)
 class ImplMarkerProfile:
+    """
+    Represents a marker profile containing implementation details.
+
+    This class is designed to encapsulate specific implementation details compliant with
+    PEP 508. It provides information about the implementation name and the Python
+    platform implementation in a structured and immutable format due to its frozen
+    nature.
+
+    Attributes:
+        implementation_name (str): The name of the Python implementation in
+            lowercase as per PEP 508 (e.g., "cpython").
+        platform_python_implementation (str): The human-readable name of the Python
+            platform implementation as per PEP 508 (e.g., "CPython").
+    """
     implementation_name: str  # PEP 508: implementation_name (lowercase)
     platform_python_implementation: str  # PEP 508: platform_python_implementation (pretty)
 
@@ -55,8 +87,6 @@ _IMPL_PREFIX_TO_NAME: dict[str, str] = {
     # "py" intentionally omitted: doesn't encode implementation
 }
 
-# Your ResolutionContext.os_family currently looks like: linux | windows | macos
-# These map to the marker dialect values people actually use.
 OS_FAMILY_MARKER_PROFILES: dict[str, OsMarkerProfile] = {
     "linux": OsMarkerProfile(sys_platform="linux", platform_system="Linux", os_name="posix"),
     "windows": OsMarkerProfile(sys_platform="win32", platform_system="Windows", os_name="nt"),
@@ -186,6 +216,17 @@ def _audit(*, substage: str, message: str, payload: dict[str, Any] | None = None
 
 
 class PychubReporter(BaseReporter[ResolverRequirement, ResolverCandidate, str]):
+    """
+    Handles the reporting and auditing tasks during a resolution process.
+
+    This class is responsible for generating audits for the various stages
+    of a resolution process. It provides methods for logging the start and
+    end of the resolution, handling requirement additions, pinning candidates,
+    rejecting candidates, and resolving conflicts. It serves as a specialized
+    reporter for tracking detailed audit information needed in the resolution
+    workflow.
+    """
+
     def starting(self) -> None:
         _audit(substage="starting",
                message="resolution starting")
@@ -229,6 +270,18 @@ class PychubReporter(BaseReporter[ResolverRequirement, ResolverCandidate, str]):
 
 
 class PychubResolverProvider(AbstractProvider[ResolverRequirement, ResolverCandidate, str]):
+    """
+    Provides a resolver provider implementation for PyChub that interacts
+    with packaging metadata and dependency resolution to supply resolver
+    requirements and candidates.
+
+    This class facilitates candidate identification, preference scoring,
+    candidate matching, and dependency retrieval using a combination of
+    PEP 691 metadata and PEP 658 metadata. Specifically designed for
+    resolving packages within the PyChub ecosystem, it enables robust
+    compatibility checking and stable ordering of candidate matches.
+    """
+
     def __init__(self):
         pkg_ctx = current_packaging_context.get()
         self._pep691 = pkg_ctx.pep691_resolver
@@ -253,25 +306,20 @@ class PychubResolverProvider(AbstractProvider[ResolverRequirement, ResolverCandi
             requirements: Mapping[str, Iterator[ResolverRequirement]],
             incompatibilities: Mapping[str, Iterator[ResolverCandidate]]) -> Matches[ResolverCandidate]:
         """
-        Finds and generates a list of resolver candidates based on the given identifier,
-        requirements, and incompatibilities. This process involves filtering candidates
-        based on specifier constraints, compatibility with tags, and avoiding banned
-        candidates for stability and correctness.
+        Finds matches for the given identifier by combining requirement constraints, excluding
+        incompatible candidates, and ranking candidates based on their compatibility and
+        desirability within the current context.
 
         Args:
-            identifier (str): The package identifier for which to find matches.
-            requirements (Mapping[str, Iterator[ResolverRequirement]]): A mapping of
-                package identifiers to iterators of their respective resolver
-                requirements. Each resolver requirement contains constraints that must
-                be satisfied.
-            incompatibilities (Mapping[str, Iterator[ResolverCandidate]]): A mapping of
-                package identifiers to iterators of resolver candidates which are
-                deemed incompatible and must not be included in the result.
+            identifier (str): The unique identifier for which matching candidates are being resolved.
+            requirements (Mapping[str, Iterator[ResolverRequirement]]): A mapping of identifiers
+                to iterables of requirements that specify constraints on acceptable candidates.
+            incompatibilities (Mapping[str, Iterator[ResolverCandidate]]): A mapping of identifiers
+                to iterables of candidates that are explicitly marked as incompatible.
 
         Returns:
-            Matches[ResolverCandidate]: A sequence of resolver candidates satisfying
-                the provided requirements and not appearing in the list of
-                incompatibilities.
+            Matches[ResolverCandidate]: A list of resolved candidates, ordered by their
+            desirability and compatibility with the constraints and context.
         """
         # Combine all specifier constraints for *this* identifier
         req_iter = requirements.get(identifier, iter(()))
@@ -293,10 +341,22 @@ class PychubResolverProvider(AbstractProvider[ResolverRequirement, ResolverCandi
         from pychub.package.domain.compatibility_model import Pep691Metadata
         project_meta = Pep691Metadata.from_file(path=meta_entry.path, fmt="json")
 
-        ctx_tag = current_resolution_context.get().tag
+        ctx = current_resolution_context.get()
 
-        # Pick one URL per version that is compatible with ctx_tag
+        # Accept if the wheel matches ANY tag in ctx.tags
+        accepted = ctx.tags
+
+        # Prefer the most universal tag first: py3-none-any, then py313-none-any, then everything else
+        t_py_major = Tag(f"py{ctx.python_version.major}", "none", "any")
+        t_py_minor = Tag(f"py{ctx.python_version.major}{ctx.python_version.minor}", "none", "any")
+
+        preferred: list[Tag] = [t_py_major, t_py_minor] + sorted(
+            (t for t in accepted if t not in {t_py_major, t_py_minor}),
+            key=str
+        )
+        rank_by_tag: dict[Tag, int] = {t: i for i, t in enumerate(preferred)}
         best_url_by_version: dict[Version, str] = {}
+        best_rank_by_version: dict[Version, int] = {}
         best_filename_by_version: dict[Version, str] = {}
 
         for f in project_meta.files:
@@ -308,22 +368,34 @@ class PychubResolverProvider(AbstractProvider[ResolverRequirement, ResolverCandi
             except Exception:
                 continue
 
-            if ctx_tag not in tagset:
-                continue
-
             ver = Version(str(v))
             if ver not in spec:
                 continue
 
-            existing = best_url_by_version.get(ver)
-            if existing is None:
-                best_url_by_version[ver] = f.url
+            # Compute the best (lowest) rank among the wheel's tags that are acceptable for this context
+            best_rank = None
+            for t in tagset:
+                rank = rank_by_tag.get(t)
+                if rank is None:
+                    continue
+                if best_rank is None or rank < best_rank:
+                    best_rank = rank
+
+            if best_rank is None:
+                continue  # wheel doesn't match any acceptable tag for this context
+
+            existing_rank = best_rank_by_version.get(ver)
+            if existing_rank is None:
+                best_rank_by_version[ver] = best_rank
                 best_filename_by_version[ver] = f.filename
-            else:
-                # Prefer lexicographically smaller filename as deterministic tie-breaker
-                if f.filename < best_filename_by_version[ver]:
-                    best_url_by_version[ver] = f.url
-                    best_filename_by_version[ver] = f.filename
+                best_url_by_version[ver] = f.url
+                continue
+
+            # Prefer lower rank (more universal); tiebreak by filename
+            if best_rank < existing_rank or (best_rank == existing_rank and f.filename < best_filename_by_version[ver]):
+                best_rank_by_version[ver] = best_rank
+                best_filename_by_version[ver] = f.filename
+                best_url_by_version[ver] = f.url
 
         # Emit candidates in a stable order (the newest first tends to reduce backtracking)
         matches: list[ResolverCandidate] = []
@@ -344,14 +416,33 @@ class PychubResolverProvider(AbstractProvider[ResolverRequirement, ResolverCandi
         Expand dependencies for a chosen candidate under the current context.
         This is where marker evaluation happens.
         """
-        entry = self._pep658.resolve(wheel_key=candidate.wheel_key)
+        if not candidate.download_url:
+            return []
+
+        ctx = current_resolution_context.get()
+        wk = candidate.wheel_key
+        filename = _wheel_filename_from_uri(candidate.download_url)
+
+        try:
+            _, _, _, tagset = parse_wheel_filename(filename)
+        except Exception:
+            return []
+
+        actual_tag = choose_wheel_tag(filename=filename, name=wk.name, version=wk.version)
+        accepted = ctx.tags or frozenset()
+        satisfied = frozenset(str(t) for t in tagset if t in accepted)
+        wk.set_metadata(
+            WheelKeyMetadata(
+            actual_tag=actual_tag,
+            satisfied_tags=satisfied,
+            origin_uri=candidate.download_url))
+
+        entry = self._pep658.resolve(wheel_key=wk, uri=candidate.download_url)
         if entry is None:
-            # No metadata => resolvelib will treat this candidate as a dead-end.
             return []
 
         _, requires_dist_lines = _parse_core_metadata(entry.path)
         env = _marker_environment()
-
         deps: list[ResolverRequirement] = []
         for line in requires_dist_lines:
             try:
@@ -359,11 +450,8 @@ class PychubResolverProvider(AbstractProvider[ResolverRequirement, ResolverCandi
             except Exception:
                 continue
 
-            # Marker filtering (context-sensitive)
-            if req.marker is not None:
-                # Extras: ignore for now (treat as no extras); you can add later.
-                if not req.marker.evaluate(env):
-                    continue
+            if req.marker is not None and not req.marker.evaluate(env):
+                continue
 
             deps.append(
                 ResolverRequirement(
@@ -374,13 +462,14 @@ class PychubResolverProvider(AbstractProvider[ResolverRequirement, ResolverCandi
         return deps
 
 
-def _accepted_tags_for_context(ctx: ResolutionContext) -> tuple[Tag, Tag, Tag]:
-    major = ctx.python_version.major
-    minor = ctx.python_version.minor
-    return (
-        ctx.tag,
+def _accepted_tags_for_context(*, python_version: Version, context_tag: Tag) -> frozenset[Tag]:
+    major = python_version.major
+    minor = python_version.minor
+    return frozenset({
+        context_tag,
+        Tag(f"py{major}", "none", "any"),
         Tag(f"py{major}{minor}", "none", "any"),
-        Tag(f"py{major}", "none", "any"))
+    })
 
 
 def _parse_core_metadata(path: Path) -> tuple[str | None, list[str]]:
@@ -507,10 +596,11 @@ def build_resolution_contexts(
     impl_defaults = list(default_python_implementations)
 
     out: list[ResolutionContext] = []
-    seen: set[tuple[str, str, str, str, str]] = set()
+    seen: set[str] = set()
 
     def add_ctx(ctx: ResolutionContext) -> None:
-        key = (ctx.os_family, ctx.arch, ctx.python_implementation, str(ctx.python_version), str(ctx.tag))
+        # CHANGE: The model already defines a stable context_key, so use it.
+        key = ctx.context_key
         if key not in seen:
             seen.add(key)
             out.append(ctx)
@@ -546,7 +636,7 @@ def build_resolution_contexts(
                         os_family=os_family,
                         python_implementation=impl,
                         python_version=v,
-                        tag=tag))
+                        tags=_accepted_tags_for_context(python_version=v, context_tag=tag)))
             continue
 
         # Universal platform tag ("any"): expand across OS family x arch.
@@ -569,15 +659,9 @@ def build_resolution_contexts(
                                 os_family=os_family,
                                 python_implementation=impl,
                                 python_version=v,
-                                tag=tag))
+                                tags=_accepted_tags_for_context(python_version=v, context_tag=tag)))
 
-    out.sort(
-        key=lambda c: (
-            c.os_family,
-            c.arch,
-            c.python_implementation,
-            str(c.python_version),
-            str(c.tag)))
+    out.sort(key=lambda c: c.context_key)
     return out
 
 

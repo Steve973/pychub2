@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Callable
 from dataclasses import dataclass, field
-from enum import auto, Enum
+from enum import Enum
 from typing import Any, ClassVar
 
 from packaging.tags import Tag, parse_tag
@@ -14,24 +14,53 @@ _NONE = "__none__"
 
 
 def tag_from_str(s: str) -> Tag:
-    parsed_tags = parse_tag(tag=s)
-    if len(parsed_tags) != 1:
-        raise ValueError(f"Expected 1 tag, got {len(parsed_tags)}: {s}")
-    return next(iter(parsed_tags))
+    """
+    Parse a single tag string (e.g. "py3-none-any") into a Tag.
+    """
+    parsed = parse_tag(s)
+    if len(parsed) != 1:
+        raise ValueError(f"Expected single tag, got {len(parsed)}: {s}")
+    return next(iter(parsed))
+
+
+def tags_to_str(tags: frozenset[Tag]) -> str:
+    """
+    # CHANGE: Deterministic encoding for a set of tags in context_key.
+    Uses comma-separated, lexicographically sorted tag strings.
+    """
+    return ",".join(sorted(str(t) for t in tags))
+
+
+def tags_from_str(raw: str) -> frozenset[Tag]:
+    """
+    # CHANGE: Inverse of tags_to_str().
+    Accepts comma-separated tag strings.
+    """
+    raw = raw.strip()
+    if not raw:
+        return frozenset()
+
+    out: set[Tag] = set()
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        out |= set(parse_tag(part))
+    return frozenset(out)
 
 
 class ResolutionStatusType(str, Enum):
-    PENDING = auto()
-    SUCCESS = auto()
-    FAILED = auto()
+    PENDING = "PENDING"
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
 
 
 class ReasonType(str, Enum):
-    NO_CANDIDATES = auto()
-    VERSION_CONFLICT = auto()
-    NO_COMPATIBLE_WHEEL = auto()
-    MARKER_PRUNED_ALL = auto()
-    UNKNOWN = auto()
+    NO_CANDIDATES = "NO_CANDIDATES"
+    VERSION_CONFLICT = "VERSION_CONFLICT"
+    NO_COMPATIBLE_WHEEL = "NO_COMPATIBLE_WHEEL"
+    MARKER_PRUNED_ALL = "MARKER_PRUNED_ALL"
+    UNKNOWN = "UNKNOWN"
 
 
 @dataclass(frozen=False, kw_only=True, slots=True)
@@ -78,13 +107,13 @@ class ResolutionContext(MultiformatModelMixin):
         python_implementation (str): The Python implementation being used
             (e.g., CPython, PyPy).
         python_version (Version): The version of Python being used in this context.
-        tag (Tag): The compatibility tag triple associated with this context.
+        tags (frozenset[Tag]): The compatibility tag triples associated with this context.
     """
     arch: str
     os_family: str
     python_implementation: str
     python_version: Version
-    tag: Tag = field(default_factory=lambda: Tag(_NONE, _NONE, _NONE))
+    tags: frozenset[Tag] = field(default_factory=frozenset)
     result: ResolutionContextResult = field(
         default_factory=lambda: ResolutionContextResult(
             status=ResolutionStatusType.PENDING,
@@ -98,8 +127,7 @@ class ResolutionContext(MultiformatModelMixin):
         ("os_family", str, str),
         ("python_implementation", str, str),
         ("python_version", lambda v: str(v), Version),
-        ("tag", lambda t: str(t), tag_from_str),
-    )
+        ("tags", tags_to_str, tags_from_str))
 
     @property
     def context_key(self) -> str:
@@ -120,26 +148,28 @@ class ResolutionContext(MultiformatModelMixin):
         return cls(**kwargs)
 
     def to_mapping(self) -> dict[str, Any]:
+        tags = [{
+            "interpreter": t.interpreter,
+            "abi": t.abi,
+            "platform": t.platform
+        } for t in sorted(self.tags, key=str)]
         return {
             "arch": self.arch,
             "os_family": self.os_family,
             "python_implementation": self.python_implementation,
             "python_version": str(self.python_version),
-            "tag": {
-                "interpreter": self.tag.interpreter,
-                "abi": self.tag.abi,
-                "platform": self.tag.platform
-            },
+            "tags": tags,
             "result": self.result.to_mapping()
         }
 
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> ResolutionContext:
-        tag_map = mapping["tag"]
+        tags_list = mapping["tags"]
+        tags = [Tag(t["interpreter"], t["abi"], t["platform"]) for t in tags_list]
         return cls(
             arch=mapping["arch"],
             os_family=mapping["os_family"],
             python_implementation=mapping["python_implementation"],
             python_version=Version(mapping["python_version"]),
-            tag=Tag(tag_map["interpreter"], tag_map["abi"], tag_map["platform"]),
+            tags=frozenset(tags),
             result=ResolutionContextResult.from_mapping(mapping["result"]))

@@ -212,7 +212,7 @@ class WheelCache(BasePersistedCache[str, WheelCacheIndexModel, WheelCacheModel])
 
 
 @dataclass(kw_only=True)
-class BaseMetadataCache(BasePersistedCache[WheelKey, MetadataCacheIndexModel, MetadataCacheModel]):
+class BaseMetadataCache(BasePersistedCache[WheelKey, MetadataCacheIndexModel, MetadataCacheModel], ABC):
     """
     Manages metadata caching with a limited size and time-to-use eviction policy.
 
@@ -229,8 +229,9 @@ class BaseMetadataCache(BasePersistedCache[WheelKey, MetadataCacheIndexModel, Me
     resolver: MetadataArtifactResolver
     maxsize: int = _CACHE_MAX_SIZE
 
+    @abstractmethod
     def _cache_key(self, key: WheelKey) -> str:
-        return project_cache_key(wheel_key=key)
+        raise NotImplementedError
 
     def _create_cache(self):
         return TLRUCache(maxsize=self.maxsize, ttu=_ttu, timer=_timer)
@@ -250,7 +251,6 @@ class Pep658Cache(BaseMetadataCache):
 
     def _cache_key(self, key: WheelKey) -> str:
         return metadata_cache_key(wheel_key=key)
-    pass
 
 
 @dataclass(kw_only=True)

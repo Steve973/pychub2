@@ -7,48 +7,29 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TypeVar, Generic
 
-from packaging.utils import canonicalize_name, parse_wheel_filename
-
 from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
-from pychub.helper.wheel_tag_utils import choose_wheel_tag
 from pychub.package.domain.compatibility_model import WheelKey
-from pychub.package.lifecycle.plan.resolution.artifact_resolution import _wheel_filename_from_uri
 from pychub.package.lifecycle.plan.resolution.resolution_config_model import StrategyType
-from pychub.package.lifecycle.plan.resolution.resolution_context_vars import current_resolution_context
 
 _EXPIRATION_MINUTES = 1440
-E = TypeVar("E", bound=MultiformatModelMixin)  # Cache entry model type
-
-
-def get_uri_info(uri: str) -> tuple[str, str, str, WheelKey, str | None]:
-    filename = _wheel_filename_from_uri(uri)
-    name, version, _, tagset = parse_wheel_filename(filename)
-    wheel_key = WheelKey(str(name), str(version))
-    chosen_tag = choose_wheel_tag(filename=filename, name=str(name), version=str(version))
-    return filename, str(name), str(version), wheel_key, chosen_tag
+E = TypeVar("E", bound="BaseCacheIndexModel")  # Cache entry model type
 
 
 def wheel_cache_key(uri: str) -> str:
-    filename, name, version, wheel_key, chosen_tag = get_uri_info(uri)
-    if chosen_tag is None:
-        raise ValueError(f"Could not choose wheel tag for {wheel_key} from {uri}")
-    return f"{canonicalize_name(wheel_key.name)}-{wheel_key.version}-{chosen_tag}"
+    wheel_key = WheelKey.from_uri(uri)
+    return wheel_key.tagged_name
 
 
 def metadata_cache_key(wheel_key: WheelKey) -> str:
-    try:
-        context_tag = str(current_resolution_context.get().tag)
-        return f"{canonicalize_name(wheel_key.name)}-{wheel_key.version}-{context_tag}"
-    except LookupError:
-        raise ValueError("The current resolution context must be set before creating a metadata cache key")
+    return wheel_key.tagged_name
 
 
 def project_cache_key(wheel_key: WheelKey) -> str:
-    return f"{canonicalize_name(wheel_key.name)}"
+    return wheel_key.name
 
 
 @dataclass(kw_only=True)
-class BaseCacheIndexModel(ABC):
+class BaseCacheIndexModel(ABC, MultiformatModelMixin):
     key: str
     path: Path
     origin_uri: str
@@ -89,7 +70,7 @@ class BaseCacheModel(ABC, Generic[E], MultiformatModelMixin):
 
     @staticmethod
     def _entry_key(entry: E) -> str:
-        return str(getattr(entry, "key"))
+        return entry.key
 
     # ---- common serialization ----
 

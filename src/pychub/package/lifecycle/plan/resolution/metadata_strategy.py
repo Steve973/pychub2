@@ -8,12 +8,12 @@ from pathlib import Path
 from typing import Any, ClassVar, TypeVar
 from urllib.parse import urlparse
 
-from packaging.utils import canonicalize_name, parse_wheel_filename
+from packaging.utils import parse_wheel_filename
 
 from pychub.helper.strategy_loader import load_strategies_base
 from pychub.helper.wheel_tag_utils import choose_wheel_tag
 from pychub.package.domain.compatibility_model import WheelKey
-from pychub.package.lifecycle.plan.resolution.artifact_resolution import WheelArtifactResolver
+from pychub.package.lifecycle.plan.resolution.artifact_resolution import WheelArtifactResolver, _wheel_filename_from_uri
 from pychub.package.lifecycle.plan.resolution.artifact_resolution_strategy import ArtifactResolutionStrategy, \
     download_to_file, write_bytes_atomic
 from pychub.package.lifecycle.plan.resolution.resolution_config_model import (
@@ -111,7 +111,7 @@ class Pep691SimpleApiMetadataStrategy(BaseMetadataResolutionStrategy[Pep691Simpl
 
     def fetch_metadata(self, dest_dir: Path, *, wheel_key: WheelKey, uri: str | None = None) -> Path | None:
         # PEP 691 “project index” JSON
-        project = canonicalize_name(wheel_key.name)
+        project = wheel_key.name
         index_url = f"{self.strategy_config.base_simple_url.rstrip('/')}/{project}/"
         # filename: stable and deterministic
         dest_path = dest_dir / f"{project}.pep691.json"
@@ -128,38 +128,54 @@ class Pep658SidecarMetadataStrategy(BaseMetadataResolutionStrategy[Pep658Sidecar
 
     def fetch_metadata(self, dest_dir: Path, *, wheel_key: WheelKey, uri: str | None = None) -> Path | None:
         """
-        Uses PEP 691 JSON to find the chosen wheel file, then downloads its PEP 658 sidecar metadata.
+        Uses PEP 691 JSON to locate the EXACT wheel file (by URI/filename), then downloads its PEP 658 sidecar metadata.
         """
-        project = canonicalize_name(wheel_key.name)
+        selected_uri = uri
+        if selected_uri is None and wheel_key.metadata is not None:
+            selected_uri = wheel_key.metadata.origin_uri
+
+        if selected_uri is None:
+            raise ValueError(
+                "Pep658SidecarMetadataStrategy.fetch_metadata requires a "
+                "concrete wheel uri (or wheel_key.metadata.origin_uri)")
+
+        project = wheel_key.name
         index_url = f"{self.strategy_config.base_simple_url.rstrip('/')}/{project}/"
 
-        # 1) download index JSON (or better: reuse pep691 cache later; you already know)
+        # 1) download index JSON
         index_path = dest_dir / f"{project}.pep691.json"
         index_file = download_to_file(index_url, index_path, headers=self.strategy_config.request_headers)
         if index_file is None:
             return None
 
-        # 2) parse JSON -> find the best wheel file for wheel_key and read its dist-info-metadata url
-        # NOTE: this parsing depends on your Pep691Metadata model; use it instead of ad hoc parsing.
-        from pychub.package.domain.compatibility_model import Pep691Metadata  # local import avoids cycles
+        # 2) parse JSON
+        from pychub.package.domain.compatibility_model import Pep691Metadata
         candidate_meta = Pep691Metadata.from_file(path=index_file, fmt="json")
+        selected_filename = _wheel_filename_from_uri(selected_uri)
 
-        best = min(
+        file_meta = next(
             (
-                (choose_wheel_tag(f.filename, wheel_key.name, wheel_key.version), f)
-                for f in candidate_meta.files
-                if (not f.yanked and f.filename.endswith(".whl"))
+                f for f in candidate_meta.files
+                if (not f.yanked)
+                   and f.filename == selected_filename
+                   and f.url == selected_uri
             ),
-            default=None,
-            key=lambda t: (t[0], t[1].filename))
-        if best is None:
+            None)
+
+        if file_meta is None:
+            # Fallback: sometimes normalized URLs differ; allow filename match if URL mismatch
+            file_meta = next(
+                (
+                    f for f in candidate_meta.files
+                    if (not f.yanked)
+                       and f.filename == selected_filename
+                ),
+                None)
+
+        if file_meta is None:
             return None
 
-        file_meta = best[1]
-
-        # 3) Check if PEP 658 metadata is available
-        # If core_metadata is False, the sidecar doesn't exist.
-        # If the url is None, the wheel file is missing.
+        # 3) ensure PEP 658 metadata exists
         if not file_meta.core_metadata or not file_meta.url:
             return None
 
@@ -229,7 +245,7 @@ class WheelInspectionMetadataStrategy(BaseMetadataResolutionStrategy[WheelInspec
         except ValueError:
             chosen_tag_str = "unknown"
 
-        dest_path = dest_dir / f"{canonicalize_name(wheel_key.name)}-{wheel_key.version}-{chosen_tag_str}.metadata"
+        dest_path = dest_dir / f"{wheel_key}-{chosen_tag_str}.metadata"
         return write_bytes_atomic(dest_path, meta_bytes)
 
     @classmethod

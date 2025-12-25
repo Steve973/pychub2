@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any, Generic, TypeVar
 
 from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
-from pychub.helper.wheel_tag_utils import choose_wheel_tag
 from pychub.package.domain.compatibility_model import WheelKey
 from pychub.package.lifecycle.plan.resolution.caching_model import (
     WheelCacheModel,
@@ -18,7 +17,6 @@ from pychub.package.lifecycle.plan.resolution.caching_model import (
     MetadataCacheIndexModel,
     BaseCacheIndexModel,
     wheel_cache_key,
-    get_uri_info,
     project_cache_key,
     metadata_cache_key,
 )
@@ -268,10 +266,11 @@ class WheelArtifactResolver(ArtifactResolver[WheelResolverConfig, Any, str, Whee
         cache_key = wheel_cache_key(uri=uri)
         now = datetime.now().replace(microsecond=0)
         exp = now + self.expiration_delta
-        parsed_filename = _wheel_filename_from_uri(uri)
         if wheel_key is None:
-            _, _, _, wheel_key, _ = get_uri_info(uri=uri)
-        tag = choose_wheel_tag(parsed_filename, wheel_key.name, wheel_key.version)
+            wheel_key = WheelKey.from_uri(uri=uri)
+        if wheel_key.metadata is None:
+            raise ValueError("Cannot cache wheel without metadata")
+        tag = wheel_key.metadata.actual_tag
         file_hash, size_bytes = compute_hash_and_size(resolved[0])
 
         model = WheelCacheIndexModel(

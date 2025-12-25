@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from dataclasses import field
@@ -12,12 +12,14 @@ from typing import Any
 
 from packaging.specifiers import SpecifierSet
 from packaging.tags import Tag, parse_tag
-from packaging.utils import canonicalize_name
+from packaging.utils import canonicalize_name, parse_wheel_filename
 from packaging.version import Version, InvalidVersion
 
 from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
 from pychub.helper.toml_utils import dump_toml_to_str
+from pychub.helper.wheel_tag_utils import choose_wheel_tag
 from pychub.package.lifecycle.plan.compatibility.python_version_discovery import list_available_python_versions_for_spec
+from pychub.package.lifecycle.plan.resolution.artifact_resolution import _wheel_filename_from_uri
 
 _MIN_PATTERN = re.compile(r"""
     ^\s*
@@ -699,16 +701,6 @@ class CompatibilitySpec(MultiformatModelMixin):
         base = self.tags_whitelist if self.tags_specific_only else self.tags.union(self.tags_whitelist)
         return base - self.exclude_tags
 
-    @property
-    def universal_tags(self) -> frozenset[Tag]:
-        self.check_initialized()
-        tags: set[Tag] = {Tag("py3", "none", "any")}
-        for v in self.resolved_python_version_list:
-            ver = Version(v)
-            if ver.major == 3:
-                tags.add(Tag(f"py{ver.major}{ver.minor}", "none", "any"))
-        return frozenset(tags)
-
     def to_mapping(self) -> dict[str, Any]:
         """
         Converts the instance data into a dictionary representation.
@@ -839,6 +831,29 @@ class CompatibilitySpec(MultiformatModelMixin):
         return path
 
 
+@dataclass(slots=True, kw_only=True)
+class WheelKeyMetadata(MultiformatModelMixin):
+    actual_tag: str
+    satisfied_tags: frozenset[str] = frozenset()
+    origin_uri: str | None = None
+
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
+        mapping = {
+            "actual_tag": self.actual_tag,
+            "satisfied_tags": sorted(self.satisfied_tags)
+        }
+        if self.origin_uri:
+            mapping.update({"origin_uri": self.origin_uri})
+        return mapping
+
+    @classmethod
+    def from_mapping(cls, mapping: Mapping[str, Any], *args, **kwargs) -> WheelKeyMetadata:
+        return cls(
+            actual_tag=mapping["actual_tag"],
+            satisfied_tags=frozenset(mapping.get("satisfied_tags", [])),
+            origin_uri=mapping.get("origin_uri"))
+
+
 @total_ordering
 @dataclass(slots=True, frozen=True)
 class WheelKey(MultiformatModelMixin):
@@ -855,6 +870,7 @@ class WheelKey(MultiformatModelMixin):
     """
     name: str
     version: str
+    metadata: WheelKeyMetadata | None = field(default=None, compare=False, hash=False, repr=False)
 
     # --------------------------------------------------------------------- #
     # Normalization
@@ -900,7 +916,7 @@ class WheelKey(MultiformatModelMixin):
         """
         return self.name, self.version
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         """
         Allows iteration over specified attributes of an object, providing a mechanism to yield
         attribute values sequentially.
@@ -945,10 +961,22 @@ class WheelKey(MultiformatModelMixin):
     def requirement_str(self) -> str:
         return f"{self.name}=={self.version}"
 
+    @property
+    def tagged_name(self) -> str:
+        if self.metadata is None:
+            raise ValueError("Cannot get tagged name without metadata")
+        return f"{self}-{self.metadata.actual_tag}"
+
+    def set_metadata(self, metadata: WheelKeyMetadata) -> None:
+        if self.metadata is None:
+            object.__setattr__(self, "metadata", metadata)
+        else:
+            raise ValueError("WheelKey.metadata is already set")
+
     # --------------------------------------------------------------------- #
     # (De)serialization helpers
     # --------------------------------------------------------------------- #
-    def to_mapping(self) -> Mapping[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts the attributes of an instance into a mapping.
 
@@ -959,7 +987,10 @@ class WheelKey(MultiformatModelMixin):
             Mapping[str, Any]: A dictionary with the instance's attribute names
             as keys and their values as corresponding values.
         """
-        return {"name": self.name, "version": self.version}
+        mapping: dict[str, Any] = {"name": self.name, "version": self.version}
+        if self.metadata:
+            mapping.update({"metadata": self.metadata.to_mapping()})
+        return mapping
 
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> WheelKey:
@@ -979,7 +1010,30 @@ class WheelKey(MultiformatModelMixin):
             WheelKey: A new instance of the class with attributes set as specified
                 in the mapping.
         """
-        return cls(name=mapping["name"], version=mapping["version"])
+        metadata_mapping = mapping.get("metadata") or None
+        metadata = WheelKeyMetadata.from_mapping(metadata_mapping) if metadata_mapping else None
+        return cls(
+            name=mapping["name"],
+            version=mapping["version"],
+            metadata=metadata)
+
+    @classmethod
+    def from_uri(cls, uri: str) -> WheelKey:
+        filename = _wheel_filename_from_uri(uri)
+        name, version, _, tagset = parse_wheel_filename(filename)
+        chosen_tag = choose_wheel_tag(filename=filename, name=str(name), version=str(version))
+        if chosen_tag is None:
+            raise ValueError(
+                "Cannot determine wheel tag from URI: "
+                f"filename={filename}, name={name}, version={version}")
+        tag_list = [str(t) for t in tagset]
+        return cls(
+            str(name),
+            str(version),
+            WheelKeyMetadata(
+                actual_tag=chosen_tag,
+                satisfied_tags=frozenset(tag_list),
+                origin_uri=uri))
 
     # --------------------------------------------------------------------- #
     # ---- comparison logic ----------------------------------------------- #
@@ -1009,6 +1063,9 @@ class WheelKey(MultiformatModelMixin):
             return NotImplemented
         # equality on normalized strings is deterministic
         return (self.name, self.version) == (other.name, other.version)
+
+    def __hash__(self) -> int:
+        return hash((self.name, self.version))
 
     def __lt__(self, other: "WheelKey") -> bool:
         """
