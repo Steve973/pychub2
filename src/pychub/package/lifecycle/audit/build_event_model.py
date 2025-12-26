@@ -9,6 +9,8 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, ParamSpec, TypeVar
 
+from typing_extensions import Self
+
 from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
 from pychub.package.domain.buildplan_model import BuildPlan
 from pychub.package.packaging_context_vars import current_packaging_context
@@ -261,7 +263,7 @@ class BuildEvent(MultiformatModelMixin):
             if self.annotation_type is None:
                 raise ValueError("BuildEvent.annotation_type must be set for ANNOTATION events")
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts the attributes of the object into a dictionary representation.
 
@@ -322,7 +324,7 @@ class BuildEvent(MultiformatModelMixin):
             payload=frozen_payload)
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> BuildEvent:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         """
         Creates a BuildEvent instance from a mapping object containing the relevant keys and values.
 
@@ -351,7 +353,7 @@ class BuildEvent(MultiformatModelMixin):
         level = LevelType(mapping.get("level", LevelType.INFO.value))
         stage = StageType(mapping.get("stage", StageType.LIFECYCLE.value))
 
-        return BuildEvent(
+        return cls(
             annotation_type=annotation_type,
             event_id=mapping.get("event_id", str(uuid.uuid4())),
             event_type=event_type,

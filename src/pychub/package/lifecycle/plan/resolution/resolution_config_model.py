@@ -6,6 +6,8 @@ from enum import Enum
 from pathlib import Path
 from typing import TypeVar, Any
 
+from typing_extensions import Self
+
 from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
 
 TConfig = TypeVar("TConfig", bound="BaseResolverConfig")
@@ -101,7 +103,7 @@ class ArtifactResolutionStrategyConfig(MultiformatModelMixin):
     strategy_type: StrategyType = field(default=StrategyType.UNSPECIFIED)
     strategy_subtype: str = field(default_factory=str)
 
-    def to_mapping(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         return {
             "name": self.name,
             "fqcn": self.fqcn,
@@ -125,7 +127,7 @@ class ArtifactResolutionStrategyConfig(MultiformatModelMixin):
         }
 
     @classmethod
-    def from_mapping(cls: type[T], mapping: Mapping[str, Any], **_: Any) -> T:
+    def from_mapping(cls: type[Self], mapping: Mapping[str, Any], **_: Any) -> Self:
         base_kwargs = cls._base_kwargs_from_mapping(mapping)
         return cls(**base_kwargs)
 
@@ -143,7 +145,7 @@ class Pep691SimpleApiMetadataStrategyConfig(ArtifactResolutionStrategyConfig):
     base_simple_url: str = field(default="https://pypi.org/simple")
     request_headers: dict[str, str] = field(default_factory=_default_request_headers)
 
-    def to_mapping(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         mapping = super().to_mapping(*args, **kwargs)
         mapping.update({
             "base_simple_url": self.base_simple_url,
@@ -152,7 +154,7 @@ class Pep691SimpleApiMetadataStrategyConfig(ArtifactResolutionStrategyConfig):
         return mapping
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Pep691SimpleApiMetadataStrategyConfig:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         base_kwargs = cls._base_kwargs_from_mapping(mapping)
         base_kwargs["base_simple_url"] = mapping.get("base_simple_url", cls.base_simple_url)
         base_kwargs["request_headers"] = mapping.get("request_headers", cls.request_headers)
@@ -169,7 +171,7 @@ class Pep658SidecarMetadataStrategyConfig(ArtifactResolutionStrategyConfig):
     base_simple_url: str = field(default="https://pypi.org/simple")
     request_headers: dict[str, str] = field(default_factory=_default_request_headers)
 
-    def to_mapping(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         mapping = super().to_mapping(*args, **kwargs)
         mapping.update({
             "base_simple_url": self.base_simple_url,
@@ -178,7 +180,7 @@ class Pep658SidecarMetadataStrategyConfig(ArtifactResolutionStrategyConfig):
         return mapping
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> "Pep658SidecarMetadataStrategyConfig":
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         base_kwargs = cls._base_kwargs_from_mapping(mapping)
         base_kwargs["base_simple_url"] = mapping.get("base_simple_url", cls.base_simple_url)
         base_kwargs["request_headers"] = mapping.get("request_headers", cls.request_headers)
@@ -192,11 +194,11 @@ class WheelInspectionMetadataStrategyConfig(ArtifactResolutionStrategyConfig):
     strategy_type: StrategyType = field(default=StrategyType.DEPENDENCY_METADATA)
     strategy_subtype: str = field(default="wheel_inspection")
 
-    def to_mapping(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         return super().to_mapping(*args, **kwargs)
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> WheelInspectionMetadataStrategyConfig:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         base_kwargs = cls._base_kwargs_from_mapping(mapping)
         return cls(**base_kwargs)
 
@@ -213,13 +215,13 @@ class FilesystemWheelStrategyConfig(ArtifactResolutionStrategyConfig):
     strategy_subtype: str = field(default="filesystem_wheel")
     supported_schemes: Sequence[str] = field(default_factory=_default_fs_schemes)
 
-    def to_mapping(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         mapping = super().to_mapping(*args, **kwargs)
         mapping["supported_schemes"] = self.supported_schemes
         return mapping
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> FilesystemWheelStrategyConfig:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         base_kwargs = cls._base_kwargs_from_mapping(mapping)
         base_kwargs["supported_schemes"] = mapping.get("supported_schemes", _default_fs_schemes())
         return cls(**base_kwargs)
@@ -233,13 +235,13 @@ class HttpWheelStrategyConfig(ArtifactResolutionStrategyConfig):
     strategy_subtype: str = field(default="https_wheel")
     supported_schemes: Sequence[str] = field(default_factory=_default_http_schemes)
 
-    def to_mapping(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         mapping = super().to_mapping(*args, **kwargs)
         mapping["supported_schemes"] = self.supported_schemes
         return mapping
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> HttpWheelStrategyConfig:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         base_kwargs = cls._base_kwargs_from_mapping(mapping)
         base_kwargs["supported_schemes"] = mapping.get("supported_schemes", _default_http_schemes())
         return cls(**base_kwargs)
@@ -264,7 +266,7 @@ class BaseResolverConfig(MultiformatModelMixin):
 
     # ---------- Serialization ----------
 
-    def to_mapping(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Base serialization: common config fields and strategy mappings.
         Subclasses can override if they need extra fields, but this should
@@ -318,10 +320,7 @@ class BaseResolverConfig(MultiformatModelMixin):
         init_kwargs.setdefault("clear_on_startup", bool(mapping.get("clear_on_startup", cls.clear_on_startup)))
 
     @classmethod
-    def from_mapping(
-            cls: type[TConfig],
-            mapping: Mapping[str, Any],
-            **kwargs: Any) -> TConfig:
+    def from_mapping(cls: type[Self], mapping: Mapping[str, Any], **kwargs: Any) -> Self:
         """
         Creates an instance of the class using the provided mapping and additional keyword
         arguments. This method processes the mapping and combines it with class-specific

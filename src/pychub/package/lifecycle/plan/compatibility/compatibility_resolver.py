@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Collection, Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from email.parser import Parser
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, NamedTuple, cast
 
 from packaging.requirements import Requirement as PkgRequirement
 from packaging.specifiers import SpecifierSet
@@ -14,16 +14,20 @@ from packaging.version import Version
 from resolvelib import Resolver, ResolutionImpossible, BaseReporter
 from resolvelib.providers import AbstractProvider, Preference
 from resolvelib.resolvers import Criterion
-from resolvelib.structs import RequirementInformation, State, Matches
+from resolvelib.structs import RequirementInformation, State, Matches, DirectedGraph
+from typing_extensions import Self
 
 from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
 from pychub.helper.wheel_tag_utils import choose_wheel_tag
-from pychub.package.domain.compatibility_model import CompatibilitySpec, WheelKeyMetadata
+from pychub.package.domain.compatibility_model import CompatibilitySpec, WheelKeyMetadata, CompatibilityResolution, \
+    ResolvedWheelNode
 from pychub.package.domain.compatibility_model import WheelKey
 from pychub.package.domain.project_model import ChubProject
 from pychub.package.lifecycle.audit.build_event_model import BuildEvent, EventType, StageType, LevelType
 from pychub.package.lifecycle.plan.compatibility.compatibility_spec_loader import load_compatibility_spec
-from pychub.package.lifecycle.plan.resolution.artifact_resolution import _wheel_filename_from_uri
+from pychub.package.lifecycle.plan.resolution.artifact_resolution import _wheel_filename_from_uri, \
+    MetadataArtifactResolver
+from pychub.package.lifecycle.plan.resolution.resolution_context_model import ResolutionStatusType
 from pychub.package.lifecycle.plan.resolution.resolution_context_vars import ResolutionContext, \
     current_resolution_context
 from pychub.package.packaging_context_vars import current_packaging_context
@@ -132,7 +136,7 @@ class ResolverRequirement(MultiformatModelMixin):
     def normalized_name(self) -> str:
         return canonicalize_name(self.project_name)
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         return {
             "project_name": self.project_name,
             "specifier_set": str(self.specifier_set),
@@ -140,7 +144,7 @@ class ResolverRequirement(MultiformatModelMixin):
         }
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> ResolverRequirement:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         return cls(
             project_name=str(mapping["project_name"]),
             specifier_set=SpecifierSet(str(mapping.get("specifier_set") or "")),
@@ -157,13 +161,16 @@ class ResolverCandidate(MultiformatModelMixin):
     """
     project_name: str
     version: Version
-
-    # Optional metadata that can help short-circuit / debugging:
     requires_python: str | None = None
-
-    # Optional: if you pick a concrete wheel URL for the current context tag during candidate
-    # selection, you can store it here. If you don't, leave it None and resolve later.
     download_url: str | None = None
+    _wheel_key: WheelKey = field(
+        init=False,
+        repr=False,
+        compare=False,
+        hash=False)
+
+    def __post_init__(self):
+        object.__setattr__(self, "_wheel_key", WheelKey(self.project_name, str(self.version)))
 
     @property
     def normalized_name(self) -> str:
@@ -171,9 +178,9 @@ class ResolverCandidate(MultiformatModelMixin):
 
     @property
     def wheel_key(self) -> WheelKey:
-        return WheelKey(self.project_name, str(self.version))
+        return self._wheel_key
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         return {
             "project_name": self.project_name,
             "version": str(self.version),
@@ -182,12 +189,25 @@ class ResolverCandidate(MultiformatModelMixin):
         }
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> ResolverCandidate:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         return cls(
             project_name=str(mapping["project_name"]),
             version=Version(str(mapping["version"])),
             requires_python=mapping.get("requires_python"),
             download_url=mapping.get("download_url"))
+
+
+Identifier = str
+
+
+class ResolveResult(NamedTuple):
+    mapping: Mapping[Identifier, ResolverCandidate]
+    graph: DirectedGraph
+    criteria: Mapping[Identifier, Criterion]
+
+
+def resolve_typed(resolver, root_reqs) -> ResolveResult:
+    return cast(ResolveResult, resolver.resolve(root_reqs))
 
 
 def _safe_resolution_ctx_payload() -> dict[str, Any]:
@@ -287,7 +307,7 @@ class PychubResolverProvider(AbstractProvider[ResolverRequirement, ResolverCandi
         self._pep691 = pkg_ctx.pep691_resolver
         self._pep658 = pkg_ctx.pep658_resolver
 
-    def identify(self, requirement_or_candidate: Any) -> str:
+    def identify(self, requirement_or_candidate: ResolverRequirement | ResolverCandidate) -> str:
         # resolvelib wants a stable identifier for "this project"
         return canonicalize_name(requirement_or_candidate.project_name)
 
@@ -352,8 +372,7 @@ class PychubResolverProvider(AbstractProvider[ResolverRequirement, ResolverCandi
 
         preferred: list[Tag] = [t_py_major, t_py_minor] + sorted(
             (t for t in accepted if t not in {t_py_major, t_py_minor}),
-            key=str
-        )
+            key=str)
         rank_by_tag: dict[Tag, int] = {t: i for i, t in enumerate(preferred)}
         best_url_by_version: dict[Version, str] = {}
         best_rank_by_version: dict[Version, int] = {}
@@ -433,9 +452,9 @@ class PychubResolverProvider(AbstractProvider[ResolverRequirement, ResolverCandi
         satisfied = frozenset(str(t) for t in tagset if t in accepted)
         wk.set_metadata(
             WheelKeyMetadata(
-            actual_tag=actual_tag,
-            satisfied_tags=satisfied,
-            origin_uri=candidate.download_url))
+                actual_tag=actual_tag,
+                satisfied_tags=satisfied,
+                origin_uri=candidate.download_url))
 
         entry = self._pep658.resolve(wheel_key=wk, uri=candidate.download_url)
         if entry is None:
@@ -665,8 +684,136 @@ def build_resolution_contexts(
     return out
 
 
+def _pep658_requires_for_candidate(
+        *,
+        pep658_resolver: MetadataArtifactResolver,
+        wheel_key: WheelKey,
+        download_url: str | None) -> tuple[str, frozenset[str]]:
+    """
+    Returns (requires_python, requires_dist_lines) from PEP 658 sidecar metadata.
+    If metadata is missing, returns empty values.
+    """
+    entry = pep658_resolver.resolve(wheel_key=wheel_key, uri=download_url)
+    if entry is None:
+        return "", frozenset()
+
+    requires_python, requires_dist_lines = _parse_core_metadata(entry.path)
+    return (requires_python or ""), frozenset(requires_dist_lines or [])
+
+
+def _graph_children(graph: DirectedGraph, parent: str | None) -> list[str]:
+    """
+    CHANGE: Single choke point for DirectedGraph API.
+    If resolvelib's DirectedGraph method name differs in your version, fix it here.
+    """
+    if hasattr(graph, "iter_children"):
+        return list(graph.iter_children(parent))
+    raise TypeError(f"Unsupported DirectedGraph API: missing iter_children() on {type(graph)!r}")
+
+
+def _graph_roots(graph: DirectedGraph) -> set[str]:
+    """
+    resolvelib DirectedGraph convention is typically: roots are children of None.
+    """
+    return set(_graph_children(graph, None))
+
+
+def require_candidate_wheel_key_metadata(
+        cand: ResolverCandidate,
+        ctx: ResolutionContext) -> WheelKey:
+    """
+    Hard invariant: accepted candidates MUST have WheelKey.metadata populated
+    for the current resolution context.
+
+    We do NOT try to fill it here. If it's missing, that's a bug in the
+    resolution phase (usually in get_dependencies()).
+    """
+    wk = cand.wheel_key
+    if wk.metadata is None:
+        raise ValueError(
+            "WheelKey.metadata is missing for an accepted candidate. "
+            f"context={ctx.context_key} "
+            f"candidate={cand.project_name}=={cand.version} "
+            f"download_url={cand.download_url!r}")
+    return wk
+
+
+def build_accepted_dependency_graph(
+        resolution_ctx: ResolutionContext,
+        result: ResolveResult,
+        *,
+        root_wheel_keys: set[WheelKey]) -> CompatibilityResolution:
+    """
+    Build a CompatibilityResolution from the resolvelib ResolveResult for ONE context.
+
+    - Nodes are the accepted candidates (result.mapping).
+    - Edges are taken from result.graph (no re-derivation).
+    - Node metadata comes from PEP 658 sidecar metadata.
+    - WheelKey.metadata is populated from the chosen wheel URL (when available).
+    """
+    pkg_ctx = current_packaging_context.get()
+    pep658_resolver = pkg_ctx.pep658_resolver
+
+    mapping: dict[str, ResolverCandidate] = cast(dict[str, ResolverCandidate], result.mapping)
+    graph: DirectedGraph = result.graph
+
+    wheel_key_by_id: dict[str, WheelKey] = {}
+    for ident, cand in mapping.items():
+        wheel_key_by_id[ident] = require_candidate_wheel_key_metadata(cand, resolution_ctx)
+
+    nodes: dict[WheelKey, ResolvedWheelNode] = {}
+    for ident, cand in mapping.items():
+        wk = wheel_key_by_id[ident]
+        req_py, req_dist = _pep658_requires_for_candidate(
+            pep658_resolver=pep658_resolver,
+            wheel_key=wk,
+            download_url=cand.download_url)
+
+        nodes[wk] = ResolvedWheelNode(
+            name=wk.name,
+            version=wk.version,
+            requires_python=req_py,
+            requires_dist=req_dist)
+
+    for parent_id in mapping.keys():
+        parent_wk = wheel_key_by_id[parent_id]
+
+        child_ids = _graph_children(graph, parent_id)
+        deps: set[WheelKey] = set()
+
+        for child_id in child_ids:
+            # resolvelib graphs sometimes include None edges; ignore defensively
+            if child_id is None:
+                continue
+
+            child_wk = wheel_key_by_id.get(child_id)
+            if child_wk is None:
+                # If this happens, the graph contains a vertex not present in mapping.
+                # That indicates a mismatch in how your provider identifies nodes.
+                raise ValueError(
+                    f"Graph contains child {child_id!r} not present in result.mapping keys; "
+                    f"cannot build dependency graph.")
+
+            deps.add(child_wk)
+
+        parent_node = nodes[parent_wk]
+        nodes[parent_wk] = ResolvedWheelNode(
+            name=parent_node.name,
+            version=parent_node.version,
+            requires_python=parent_node.requires_python,
+            requires_dist=parent_node.requires_dist,
+            dependencies=frozenset(deps))
+
+    py = resolution_ctx.python_version
+    supported_band = SpecifierSet(f"=={py.major}.{py.minor}.*")
+
+    return CompatibilityResolution(
+        supported_python_band=supported_band,
+        _roots=root_wheel_keys,
+        nodes=nodes)
+
+
 def build_dependency_metadata_tree() -> None:
-    processed: set[tuple[str, str, str]] = set()
     pkg_ctx = current_packaging_context.get()
     build_plan = pkg_ctx.build_plan
 
@@ -678,6 +825,8 @@ def build_dependency_metadata_tree() -> None:
         token = current_resolution_context.set(resolution_ctx)
         try:
             # Build all roots for this context in one call (resolvelib supports multiple roots)
+            root_wheel_keys = set(
+                WheelKey(root_wheel.name, str(root_wheel.version)) for root_wheel in build_plan.wheels)
             root_reqs: list[ResolverRequirement] = []
             for root_wheel in build_plan.wheels:
                 root_reqs.append(
@@ -686,18 +835,21 @@ def build_dependency_metadata_tree() -> None:
                         specifier_set=SpecifierSet(f"=={root_wheel.version}")))
 
             try:
-                result = resolver.resolve(root_reqs)
+                result: ResolveResult = resolve_typed(resolver, root_reqs)
+                resolution = build_accepted_dependency_graph(resolution_ctx, result, root_wheel_keys=root_wheel_keys)
+                resolution_ctx.result.status = ResolutionStatusType.SUCCESS
+                resolution_ctx.result.resolution_graph = resolution
             except ResolutionImpossible as e:
-                # record failure on resolution_ctx.result here
-                # resolution_ctx.result.status = FAILED, detail=str(e) ...
+                BuildEvent.make(
+                    StageType.PLAN,
+                    EventType.EXCEPTION,
+                    LevelType.DEBUG,
+                    substage="build_dependency_metadata_tree",
+                    message=str(e))
+                res_result = resolution_ctx.result
+                res_result.status = ResolutionStatusType.FAILED
+                res_result.detail = str(e)
                 continue
-
-            # result.mapping: {identifier -> ResolverCandidate}
-            # result.graph: directed graph of decisions (handy for auditing)
-            mapping = result.mapping
-
-            # TODO: turn `mapping` into your persisted graph/node model (ResolvedWheelNode, etc.)
-            # This is where you'd populate your dependency tree structure in the BuildPlan.
 
         finally:
             current_resolution_context.reset(token)

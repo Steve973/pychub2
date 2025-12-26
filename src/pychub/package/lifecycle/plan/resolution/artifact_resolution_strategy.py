@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any, Generic, TypeVar
 from urllib.request import Request, urlopen
 
+from typing_extensions import Self
+
 from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
 from pychub.package.domain.compatibility_model import WheelKey
 from pychub.package.lifecycle.plan.resolution.resolution_config_model import ArtifactResolutionStrategyConfig
@@ -80,7 +82,7 @@ class ArtifactResolutionStrategy(
 
     # ---------- serialization ----------
 
-    def to_mapping(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Delegate to the config. Config already includes fqcn, name, precedence, etc.
         """
@@ -106,9 +108,9 @@ class ArtifactResolutionStrategy(
 
     @classmethod
     def from_mapping(
-            cls: type[TStrategy],
+            cls: type[Self],
             mapping: Mapping[str, Any],
-            **deps: Any) -> TStrategy:
+            **deps: Any) -> Self:
         """
         By default, we treat the mapping itself as the config mapping.
         If you later wrap configs (e.g. {"config": {...}}), you can adjust here.

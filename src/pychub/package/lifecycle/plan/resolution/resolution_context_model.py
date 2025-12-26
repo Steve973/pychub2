@@ -7,8 +7,10 @@ from typing import Any, ClassVar
 
 from packaging.tags import Tag, parse_tag
 from packaging.version import Version
+from typing_extensions import Self
 
 from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
+from pychub.package.domain.compatibility_model import CompatibilityResolution
 
 _NONE = "__none__"
 
@@ -63,28 +65,38 @@ class ReasonType(str, Enum):
     UNKNOWN = "UNKNOWN"
 
 
-@dataclass(frozen=False, kw_only=True, slots=True)
+@dataclass(frozen=False, kw_only=True)
 class ResolutionContextResult(MultiformatModelMixin):
     status: ResolutionStatusType
     reason_kind: ReasonType
     detail: str
+    resolution_graph: CompatibilityResolution | None = None
     additional_info: dict = field(default_factory=dict)
 
-    def to_mapping(self) -> dict[str, Any]:
-        return {
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
+        resolution_graph_mapping = self.resolution_graph.to_mapping() if self.resolution_graph else None
+        mapping: dict[str, Any] = {
             "status": self.status.value,
             "reason_kind": self.reason_kind.value,
             "detail": self.detail,
             "additional_info": self.additional_info
         }
+        if resolution_graph_mapping:
+            mapping.update({"resolution_graph": resolution_graph_mapping})
+        return mapping
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> ResolutionContextResult:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
+        resolution_graph_mapping = mapping.get("resolution_graph")
+        resolution_graph: CompatibilityResolution | None = None
+        if resolution_graph_mapping:
+            resolution_graph = CompatibilityResolution.from_mapping(resolution_graph_mapping)
         return cls(
             status=ResolutionStatusType(mapping["status"]),
             reason_kind=ReasonType(mapping["reason_kind"]),
             detail=mapping["detail"],
-            additional_info=mapping.get("additional_info", {}))
+            additional_info=mapping.get("additional_info", {}),
+            resolution_graph=resolution_graph)
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -147,7 +159,7 @@ class ResolutionContext(MultiformatModelMixin):
             kwargs[name] = dec(raw)
         return cls(**kwargs)
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         tags = [{
             "interpreter": t.interpreter,
             "abi": t.abi,
@@ -163,7 +175,7 @@ class ResolutionContext(MultiformatModelMixin):
         }
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> ResolutionContext:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         tags_list = mapping["tags"]
         tags = [Tag(t["interpreter"], t["abi"], t["platform"]) for t in tags_list]
         return cls(

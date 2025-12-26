@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TypeVar, Generic
 
+from typing_extensions import Self
+
 from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
 from pychub.package.domain.compatibility_model import WheelKey
 from pychub.package.lifecycle.plan.resolution.resolution_config_model import StrategyType
@@ -74,14 +76,14 @@ class BaseCacheModel(ABC, Generic[E], MultiformatModelMixin):
 
     # ---- common serialization ----
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         return {
             self._entry_key(entry): entry.to_mapping()  # relies on entry having to_mapping()
             for entry in self._index.values()
         }
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> BaseCacheModel[E]:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         index: dict[str, E] = {
             key: cls._entry_from_mapping(entry)
             for key, entry in mapping.items()
@@ -120,7 +122,7 @@ class MetadataCacheIndexModel(BaseCacheIndexModel, MultiformatModelMixin):
     hash: str = ""
     size_bytes: int = 0
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         base = self.to_base_mapping()
         base.update({
             "metadata_type": self.metadata_type.value
@@ -128,7 +130,7 @@ class MetadataCacheIndexModel(BaseCacheIndexModel, MultiformatModelMixin):
         return base
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> MetadataCacheIndexModel:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         base_kwargs = cls.base_kwargs_from_mapping(mapping)
         mt_raw = mapping["metadata_type"]
         if isinstance(mt_raw, StrategyType):
@@ -152,7 +154,7 @@ class WheelCacheIndexModel(BaseCacheIndexModel, MultiformatModelMixin):
     hash: str = ""
     size_bytes: int = 0
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         base = self.to_base_mapping()
         base.update({
             "wheel_key": self.wheel_key.to_mapping(),
@@ -164,7 +166,7 @@ class WheelCacheIndexModel(BaseCacheIndexModel, MultiformatModelMixin):
         return base
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> WheelCacheIndexModel:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         base_kwargs = cls.base_kwargs_from_mapping(mapping)
         return cls(
             **base_kwargs,

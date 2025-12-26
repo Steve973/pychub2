@@ -8,6 +8,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from typing_extensions import Self
+
 from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
 from pychub.helper.toml_utils import dump_toml_to_str
 from pychub.package.domain.artifacts_model import Scripts
@@ -43,7 +45,7 @@ class ChubConfig(MultiformatModelMixin):
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> ChubConfig:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         """
         Creates an instance of ChubConfig from a provided mapping. The method extracts
         required fields from the given mapping to initialize a ChubConfig object. It
@@ -76,7 +78,7 @@ class ChubConfig(MultiformatModelMixin):
         targets = [str(x) for x in (mapping.get("targets") or [])]
         metadata = dict(mapping.get("metadata") or {})
 
-        cfg = ChubConfig(
+        cfg = cls(
             name=name,
             version=version,
             entrypoint=str(entrypoint) if entrypoint is not None else None,
@@ -88,7 +90,7 @@ class ChubConfig(MultiformatModelMixin):
         cfg.validate()
         return cfg
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts the current object to a dictionary representation.
 
@@ -480,7 +482,7 @@ class ChubProject(MultiformatModelMixin):
             *,
             source: SourceKind | None = None,
             details: dict[str, Any] | None = None,
-            **_: Any) -> ChubProject:
+            **_: Any) -> Self:
         """
         Creates and returns an instance of the ChubProject class from a provided
         mapping dictionary, with optional metadata and source details.
@@ -724,7 +726,7 @@ class ChubProject(MultiformatModelMixin):
                     operation=OperationKind.MERGE_OVERRIDE,
                     details=details or {}))
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts the current object into a dictionary-based mapping.
 
@@ -915,7 +917,7 @@ class ProvenanceEvent(MultiformatModelMixin):
     operation: OperationKind
     details: dict[str, Any] = field(default_factory=dict)
 
-    def to_mapping(self) -> Mapping[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts an object instance into a dictionary mapping.
 
@@ -935,7 +937,7 @@ class ProvenanceEvent(MultiformatModelMixin):
         }
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> ProvenanceEvent:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         """
         Creates an instance of ProvenanceEvent from the provided mapping and additional arguments.
 
@@ -958,7 +960,7 @@ class ProvenanceEvent(MultiformatModelMixin):
         details_obj = mapping.get("details") or {}
         if not isinstance(details_obj, dict):
             raise TypeError(f"Expected 'details' to be a mapping, got {type(details_obj)!r}")
-        return ProvenanceEvent(
+        return cls(
             source=SourceKind(mapping.get("source")),
             operation=OperationKind(mapping.get("operation")),
             details=details_obj)

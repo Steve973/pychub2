@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from appdirs import user_cache_dir
+from typing_extensions import Self
 
 from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
 from pychub.package.constants import CHUB_INCLUDES_DIR, CHUB_SCRIPTS_DIR, RUNTIME_DIR, CHUB_BUILD_DIR, CHUB_LIBS_DIR, \
@@ -85,7 +86,7 @@ class BuildPlan(MultiformatModelMixin):
     # ------------------------------------------------------------------ #
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> BuildPlan:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         """
         Creates a BuildPlan object from a mapping dictionary containing configuration
         details. The method validates and extracts required and optional fields
@@ -110,7 +111,7 @@ class BuildPlan(MultiformatModelMixin):
         if project is None:
             raise ValueError("BuildPlan requires a nested 'project' mapping")
 
-        return BuildPlan(
+        return cls(
             audit_log=list(mapping.get("audit_log", [])),
             cache_root=Path(mapping.get("cache_root", str(user_cache_dir("pychub")))),
             compatibility_spec=CompatibilitySpec.from_mapping(mapping.get("compatibility_spec", {})),
@@ -131,7 +132,7 @@ class BuildPlan(MultiformatModelMixin):
     # Serialization
     # ------------------------------------------------------------------ #
 
-    def to_mapping(self, include_derived: bool = False) -> dict[str, Any]:
+    def to_mapping(self, *args, include_derived: bool = False, **kwargs) -> Mapping[str, Any]:
         """
         Converts the internal state of the object to a dictionary.
 

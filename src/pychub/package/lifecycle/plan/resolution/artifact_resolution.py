@@ -8,6 +8,8 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any, Generic, TypeVar
 
+from typing_extensions import Self
+
 from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
 from pychub.package.domain.compatibility_model import WheelKey
 from pychub.package.lifecycle.plan.resolution.caching_model import (
@@ -88,7 +90,7 @@ class ArtifactResolutionResult(MultiformatModelMixin):
     size_bytes: int
     timestamp: datetime
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         return {
             "id": self.id,
             "path": str(self.path),
@@ -100,7 +102,7 @@ class ArtifactResolutionResult(MultiformatModelMixin):
         }
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> ArtifactResolutionResult:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         return cls(
             id=mapping["id"],
             path=Path(mapping["path"]),

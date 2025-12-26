@@ -14,6 +14,7 @@ from packaging.specifiers import SpecifierSet
 from packaging.tags import Tag, parse_tag
 from packaging.utils import canonicalize_name, parse_wheel_filename
 from packaging.version import Version, InvalidVersion
+from typing_extensions import Self
 
 from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
 from pychub.helper.toml_utils import dump_toml_to_str
@@ -165,7 +166,7 @@ class PythonVersionsSpec(MultiformatModelMixin):
         return sorted(result, key=Version)
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> PythonVersionsSpec:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         """
         Constructs a PythonVersionsSpec object from a mapping of data.
 
@@ -194,7 +195,7 @@ class PythonVersionsSpec(MultiformatModelMixin):
             specific_only=bool(mapping.get("specific_only", False)),
             excludes=_normalize_str_list(mapping.get("excludes")))
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts the attributes of the object into a dictionary mapping.
 
@@ -265,7 +266,7 @@ class AbiValuesSpec(MultiformatModelMixin):
     excludes: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> AbiValuesSpec:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         """
         Creates an instance of the class by mapping given data to its attributes.
 
@@ -290,7 +291,7 @@ class AbiValuesSpec(MultiformatModelMixin):
             specific_only=bool(data.get("specific_only", False)),
             excludes=_normalize_str_list(data.get("excludes")))
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts the object's attributes into a dictionary representation.
 
@@ -334,13 +335,13 @@ class PlatformFamilySpec(MultiformatModelMixin):
     max: str | None = None
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> PlatformFamilySpec:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         data = mapping or {}
         return cls(
             min=data.get("min"),
             max=data.get("max"))
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts the object attributes to a dictionary representation.
 
@@ -386,7 +387,7 @@ class PlatformOSSpec(MultiformatModelMixin):
     families: dict[str, PlatformFamilySpec] = field(default_factory=dict)
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> PlatformOSSpec:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         """
         Creates an instance of PlatformOSSpec from a mapping dictionary.
 
@@ -422,7 +423,7 @@ class PlatformOSSpec(MultiformatModelMixin):
             excludes=excludes,
             families=families)
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts the content of an object to a dictionary representation.
 
@@ -474,7 +475,7 @@ class CompatibilityTagsSpec(MultiformatModelMixin):
     excludes: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> CompatibilityTagsSpec:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         """
         Creates an instance of CompatibilityTagsSpec from a mapping of data.
 
@@ -497,7 +498,7 @@ class CompatibilityTagsSpec(MultiformatModelMixin):
             specific_only=bool(data.get("specific_only", False)),
             excludes=_normalize_str_list(data.get("excludes")))
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts the current instance attributes to a dictionary mapping.
 
@@ -701,7 +702,7 @@ class CompatibilitySpec(MultiformatModelMixin):
         base = self.tags_whitelist if self.tags_specific_only else self.tags.union(self.tags_whitelist)
         return base - self.exclude_tags
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts the instance data into a dictionary representation.
 
@@ -749,7 +750,7 @@ class CompatibilitySpec(MultiformatModelMixin):
             mapping: Mapping[str, Any],
             *,
             source_description: str = "",
-            **_: Any) -> CompatibilitySpec:
+            **_: Any) -> Self:
         """
         Creates an instance of CompatibilitySpec from a given mapping. This method is a factory method
         that parses the provided data mapping for compatibility-related information such as Python versions,
@@ -847,7 +848,7 @@ class WheelKeyMetadata(MultiformatModelMixin):
         return mapping
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], *args, **kwargs) -> WheelKeyMetadata:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         return cls(
             actual_tag=mapping["actual_tag"],
             satisfied_tags=frozenset(mapping.get("satisfied_tags", [])),
@@ -993,7 +994,7 @@ class WheelKey(MultiformatModelMixin):
         return mapping
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> WheelKey:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         """
         Creates an instance of `WheelKey` from a mapping of attributes.
 
@@ -1114,8 +1115,8 @@ class ResolvedWheelNode(MultiformatModelMixin):
     version: str
     requires_python: str
     requires_dist: frozenset[str]
-    dependencies: frozenset[WheelKey]  # other nodes (name, version)
-    tag_urls: Mapping[str, str] | None = None  # compat_tag -> full URL (optional)
+    dependencies: frozenset[WheelKey] = field(default_factory=frozenset)
+    tag_urls: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def key(self) -> WheelKey:
@@ -1141,7 +1142,7 @@ class ResolvedWheelNode(MultiformatModelMixin):
         """
         return sorted(list(self.tag_urls.keys() if self.tag_urls else []))
 
-    def to_mapping(self, *args, **kwargs) -> Mapping[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts the current object to a mapping representation.
 
@@ -1165,7 +1166,7 @@ class ResolvedWheelNode(MultiformatModelMixin):
         }
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> ResolvedWheelNode:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         """
         Create a ResolvedWheelNode instance from a provided mapping.
 
@@ -1200,7 +1201,7 @@ class ResolvedWheelNode(MultiformatModelMixin):
         requires_dist_raw = mapping.get("requires_dist", [])
         requires_dist = frozenset(str(rd) for rd in requires_dist_raw) or frozenset()
         tag_urls_raw = mapping.get("tag_urls")
-        tag_urls = dict(tag_urls_raw) if tag_urls_raw is not None else None
+        tag_urls = dict(tag_urls_raw) if tag_urls_raw is not None else {}
         return cls(
             name=str(mapping["name"]),
             version=str(mapping["version"]),
@@ -1278,7 +1279,7 @@ class CompatibilityResolution(MultiformatModelMixin):
         """
         return sorted(list(self._roots))
 
-    def to_mapping(self) -> Mapping[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts the internal representation of the instance into a mapping (dictionary-like
         structure) format.
@@ -1301,7 +1302,7 @@ class CompatibilityResolution(MultiformatModelMixin):
         }
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> CompatibilityResolution:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         """
         Creates an instance of `CompatibilityResolution` from a mapping data structure.
 
@@ -1352,7 +1353,7 @@ class Pep658Metadata(MultiformatModelMixin):
     requires_python: str | None
     requires_dist: frozenset[str]
 
-    def to_mapping(self) -> Mapping[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         return {
             "name": self.name,
             "version": self.version,
@@ -1361,7 +1362,7 @@ class Pep658Metadata(MultiformatModelMixin):
         }
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Pep658Metadata:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         """
         Create an instance of the class from a mapping object.
 
@@ -1440,7 +1441,7 @@ class Pep691FileMetadata(MultiformatModelMixin):
     core_metadata: bool | Mapping[str, str]
     data_dist_info_metadata: bool | Mapping[str, str]
 
-    def to_mapping(self, *args, **kwargs) -> Mapping[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         return {
             "filename": self.filename,
             "url": self.url,
@@ -1452,10 +1453,10 @@ class Pep691FileMetadata(MultiformatModelMixin):
         }
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Pep691FileMetadata:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         core_metadata: bool | Mapping[str, str] = _coerce_field(mapping.get("core-metadata"))
         data_dist_info_metadata: bool | Mapping[str, str] = _coerce_field(mapping.get("data-dist-info-metadata"))
-        return Pep691FileMetadata(
+        return cls(
             filename=mapping["filename"],
             url=mapping["url"],
             hashes=mapping["hashes"],
@@ -1471,7 +1472,7 @@ class Pep691Metadata(MultiformatModelMixin):
     files: Sequence[Pep691FileMetadata]
     last_serial: int | None = None
 
-    def to_mapping(self, *args, **kwargs) -> Mapping[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         return {
             "name": self.name,
             "files": [f.to_mapping() for f in self.files],
@@ -1479,14 +1480,14 @@ class Pep691Metadata(MultiformatModelMixin):
         }
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Pep691Metadata:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         files = [
             Pep691FileMetadata.from_mapping(f)
             for f in mapping["files"]
             if isinstance(f, Mapping)
         ]
         last_serial = mapping.get("last_serial")
-        return Pep691Metadata(
+        return cls(
             name=mapping["name"],
             files=files,
             last_serial=int(last_serial) if last_serial is not None else None)

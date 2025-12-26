@@ -17,6 +17,7 @@ from packaging.requirements import Requirement
 from packaging.tags import Tag
 from packaging.utils import parse_wheel_filename, NormalizedName, BuildTag
 from packaging.version import Version
+from typing_extensions import Self
 
 from pychub.helper.multiformat_model_mixin import MultiformatModelMixin
 
@@ -42,7 +43,7 @@ class WheelId(MultiformatModelMixin):
     version: str  # normalized version
     tag_triple: str  # like "cp312-manylinux_2_28_x86_64"
 
-    def to_mapping(self) -> dict[str, str]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts the current object properties into a dictionary mapping.
 
@@ -60,7 +61,7 @@ class WheelId(MultiformatModelMixin):
         }
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> WheelId:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         return cls(
             mapping["name"],
             mapping["version"],
@@ -279,7 +280,7 @@ class WheelArtifact(MultiformatModelMixin):
             return False
         return any(t.interpreter == "py3" and t.abi == "none" and t.platform == "any" for t in self.tags)
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts the object data to a dictionary representation.
 
@@ -307,7 +308,7 @@ class WheelArtifact(MultiformatModelMixin):
         }
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> WheelArtifact:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         path_str = mapping["path"]
         tag_name: NormalizedName
         tag_ver: Version
@@ -548,7 +549,7 @@ class WheelCollection(MultiformatModelMixin):
         if not self.supported_combos:
             raise ValueError("No common compatibility target across wheel artifacts.")
 
-    def to_mapping(self) -> Mapping[str, object]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts the object's attributes to a dictionary representation for serialization.
 
@@ -563,7 +564,7 @@ class WheelCollection(MultiformatModelMixin):
         }
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> WheelCollection:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         return cls(_wheels={WheelArtifact.from_mapping(w) for w in mapping["wheels"]})
 
 
@@ -621,7 +622,7 @@ class SourceInfo(MultiformatModelMixin):
     index_url: str | None = None
     downloaded_at: str | None = None  # ISO8601
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts the object properties to a dictionary mapping suitable for serialization.
 
@@ -640,7 +641,7 @@ class SourceInfo(MultiformatModelMixin):
         return m
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> SourceInfo:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         return cls(**mapping)
 
 
@@ -686,7 +687,7 @@ class ExtrasInfo(MultiformatModelMixin):
         return ExtrasInfo.from_lists(provides, requires)
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> ExtrasInfo:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         """
         Constructs an instance of ExtrasInfo using a mapping of extras.
 
@@ -779,7 +780,7 @@ class ExtrasInfo(MultiformatModelMixin):
         """
         return list(self.extras.keys())
 
-    def to_mapping(self) -> dict[str, list[str]]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts the extras attribute into a dictionary where each key maps to a list of strings.
 
@@ -839,7 +840,7 @@ class WheelInfo(MultiformatModelMixin):
     meta: dict[str, Any] = field(default_factory=dict)  # normalized METADATA
     wheel: dict[str, Any] = field(default_factory=dict)  # normalized WHEEL
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts the current object properties to a dictionary representation.
 
@@ -876,7 +877,7 @@ class WheelInfo(MultiformatModelMixin):
         return out
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> WheelInfo:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         """
         Create a WheelInfo instance from a given mapping.
 
@@ -891,7 +892,7 @@ class WheelInfo(MultiformatModelMixin):
         Returns:
             WheelInfo: A fully populated instance of the `WheelInfo` class.
         """
-        return WheelInfo(
+        return cls(
             filename=str(mapping.get("filename", "")),
             name=str(mapping.get("name", "")),
             version=str(mapping.get("version", "")),
@@ -1264,7 +1265,7 @@ class ScriptSpec(MultiformatModelMixin):
         return self.src.name
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> "ScriptSpec":
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         """
         Constructs a ScriptSpec instance from a mapping of attributes.
 
@@ -1292,7 +1293,7 @@ class ScriptSpec(MultiformatModelMixin):
         script_type = ScriptType(mapping["script_type"])
         return cls(src, script_type)
 
-    def to_mapping(self) -> dict[str, str]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts the object properties to a dictionary mapping of strings.
 
@@ -1374,7 +1375,7 @@ class Scripts(MultiformatModelMixin):
         return cls(_items=cls.dedup(all_items))
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> "Scripts":
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         """
         Creates and returns an instance of the Scripts class based on the given mapping.
 
@@ -1399,7 +1400,7 @@ class Scripts(MultiformatModelMixin):
             for x in (mapping.get(t.value) or [])
         ])
 
-    def to_mapping(self) -> dict[str, list[dict[str, str]]]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts the object to a dictionary mapping.
 
@@ -1529,7 +1530,7 @@ class IncludeSpec(MultiformatModelMixin):
                 out.append(spec)
         return out
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Converts the object's source and destination attributes into a dictionary mapping.
 
@@ -1545,7 +1546,7 @@ class IncludeSpec(MultiformatModelMixin):
         }
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> IncludeSpec:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         return cls(src=Path(mapping["src"]), dest=mapping.get("dest", None))
 
     def __str__(self) -> str:
@@ -1595,7 +1596,7 @@ class Includes(MultiformatModelMixin):
         """
         return [str(i) for i in self._items]
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self, *args, **kwargs) -> dict[str, Any]:
         """
         Returns a list of mappings derived from the items in the current object. Each
         item is converted to a dictionary representation using its `to_mapping` method.
@@ -1611,7 +1612,7 @@ class Includes(MultiformatModelMixin):
         }
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Includes:
+    def from_mapping(cls, mapping: Mapping[str, Any], **_: Any) -> Self:
         return cls(
             _items=[IncludeSpec(i) for i in mapping.get("items", [])])
 
