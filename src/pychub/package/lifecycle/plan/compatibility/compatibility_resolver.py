@@ -854,6 +854,69 @@ def proces_resolution_contexts() -> None:
             current_resolution_context.reset(token)
 
 
+def compute_common_tags_across_dependencies(
+        successful_contexts: list[ResolutionContext]) -> frozenset[str]:
+    """
+    Computes and returns a set of common tags by project across all provided successful resolution contexts.
+
+    This function processes a collection of resolution contexts, extracting and computing the intersection of
+    tags that are satisfied by accepted wheels in each project. The tags are aggregated and evaluated on
+    a project-by-project basis to find the commonality across all contexts. If any metadata is missing
+    during the process, a `ValueError` is raised.
+
+    Args:
+        successful_contexts (list[ResolutionContext]): A list of contexts representing successful resolutions.
+            Each context contains information such as tags and resolution graphs.
+
+    Returns:
+        frozenset[str]: A frozen set of strings representing the common tags that are shared across all
+            provided resolution contexts.
+    """
+    per_dep_union: dict[str, set[str]] = {}
+
+    for ctx in successful_contexts:
+        res = ctx.result.resolution_graph
+        if res is None:
+            continue
+
+        ctx_tag_strs = {str(t) for t in ctx.tags}
+
+        for wk in res.nodes.keys():
+            md = wk.metadata
+            if md is None:
+                raise ValueError(f"Missing WheelKey.metadata for {wk} in context {ctx.context_key}")
+
+            satisfiable_in_ctx = set(md.satisfied_tags) & ctx_tag_strs
+            if not satisfiable_in_ctx:
+                raise ValueError(
+                    "Accepted wheel satisfies no tags for its context (invariant violation). "
+                    f"context={ctx.context_key}, wheel={wk}")
+
+            per_dep_union.setdefault(wk.name, set()).update(satisfiable_in_ctx)
+
+    if not per_dep_union:
+        return frozenset()
+
+    # Intersection across dependencies
+    it = iter(per_dep_union.values())
+    acc = set(next(it))
+    for s in it:
+        acc &= s
+        if not acc:
+            return frozenset()  # early exit
+
+    return frozenset(acc)
+
+
+def process_successful_resolution_contexts() -> None:
+    build_plan = current_packaging_context.get().build_plan
+    successful_contexts = [
+        ctx for ctx in build_plan.resolution_contexts
+        if ctx.result.status == ResolutionStatusType.SUCCESS
+    ]
+    common_tags = compute_common_tags_across_dependencies(successful_contexts)
+
+
 def init_compatibility_for_plan() -> None:
     """
     Initializes and evaluates compatibility for the current build plan.

@@ -970,6 +970,8 @@ class WheelKey(MultiformatModelMixin):
 
     def set_metadata(self, metadata: WheelKeyMetadata) -> None:
         if self.metadata is None:
+            if metadata.actual_tag not in metadata.satisfied_tags:
+                raise ValueError("WheelKeyMetadata invariant violated: actual_tag not in satisfied_tags")
             object.__setattr__(self, "metadata", metadata)
         else:
             raise ValueError("WheelKey.metadata is already set")
