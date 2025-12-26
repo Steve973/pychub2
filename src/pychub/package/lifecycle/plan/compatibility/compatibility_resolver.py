@@ -169,7 +169,7 @@ class ResolverCandidate(MultiformatModelMixin):
         compare=False,
         hash=False)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         object.__setattr__(self, "_wheel_key", WheelKey(self.project_name, str(self.version)))
 
     @property
@@ -206,7 +206,9 @@ class ResolveResult(NamedTuple):
     criteria: Mapping[Identifier, Criterion]
 
 
-def resolve_typed(resolver, root_reqs) -> ResolveResult:
+def resolve_typed(
+        resolver: Resolver[ResolverRequirement, ResolverCandidate, str],
+        root_reqs: Sequence[ResolverRequirement]) -> ResolveResult:
     return cast(ResolveResult, resolver.resolve(root_reqs))
 
 
@@ -218,7 +220,7 @@ def _safe_resolution_ctx_payload() -> dict[str, Any]:
     return {"resolution_context": ctx}
 
 
-def _audit(*, substage: str, message: str, payload: dict[str, Any] | None = None):
+def _audit(*, substage: str, message: str, event_type: EventType = EventType.RESOLVE, payload: dict[str, Any] | None = None):
     audit_log = current_packaging_context.get().build_plan.audit_log
     merged = {}
     merged.update(_safe_resolution_ctx_payload())
@@ -227,8 +229,8 @@ def _audit(*, substage: str, message: str, payload: dict[str, Any] | None = None
 
     audit_log.append(
         BuildEvent.make(
-            StageType.PLAN,
-            EventType.RESOLVE,
+            stage=StageType.PLAN,
+            event_type=event_type,
             level=LevelType.DEBUG,
             substage=substage,
             message=message,
@@ -711,22 +713,25 @@ def _graph_children(graph: DirectedGraph, parent: str | None) -> list[str]:
     raise TypeError(f"Unsupported DirectedGraph API: missing iter_children() on {type(graph)!r}")
 
 
-def _graph_roots(graph: DirectedGraph) -> set[str]:
-    """
-    resolvelib DirectedGraph convention is typically: roots are children of None.
-    """
-    return set(_graph_children(graph, None))
-
-
 def require_candidate_wheel_key_metadata(
         cand: ResolverCandidate,
         ctx: ResolutionContext) -> WheelKey:
     """
-    Hard invariant: accepted candidates MUST have WheelKey.metadata populated
-    for the current resolution context.
+    Ensures that the WheelKey.metadata attribute for an accepted candidate is
+    populated for the current resolution context. This function enforces a hard
+    invariant that the metadata must exist without attempting to populate it.
+    If missing, it signals an error in the resolution phase.
 
-    We do NOT try to fill it here. If it's missing, that's a bug in the
-    resolution phase (usually in get_dependencies()).
+    Args:
+        cand: The resolver candidate whose WheelKey.metadata must exist.
+        ctx: The resolution context under which the candidate is being resolved.
+
+    Returns:
+        A `WheelKey` object with populated metadata for the specified candidate.
+
+    Raises:
+        ValueError: If the WheelKey.metadata for the candidate is missing,
+            indicating a failure in the resolution phase.
     """
     wk = cand.wheel_key
     if wk.metadata is None:
@@ -754,7 +759,7 @@ def build_accepted_dependency_graph(
     pkg_ctx = current_packaging_context.get()
     pep658_resolver = pkg_ctx.pep658_resolver
 
-    mapping: dict[str, ResolverCandidate] = cast(dict[str, ResolverCandidate], result.mapping)
+    mapping: Mapping[str, ResolverCandidate] = result.mapping
     graph: DirectedGraph = result.graph
 
     wheel_key_by_id: dict[str, WheelKey] = {}
@@ -782,10 +787,6 @@ def build_accepted_dependency_graph(
         deps: set[WheelKey] = set()
 
         for child_id in child_ids:
-            # resolvelib graphs sometimes include None edges; ignore defensively
-            if child_id is None:
-                continue
-
             child_wk = wheel_key_by_id.get(child_id)
             if child_wk is None:
                 # If this happens, the graph contains a vertex not present in mapping.
@@ -813,7 +814,7 @@ def build_accepted_dependency_graph(
         nodes=nodes)
 
 
-def build_dependency_metadata_tree() -> None:
+def proces_resolution_contexts() -> None:
     pkg_ctx = current_packaging_context.get()
     build_plan = pkg_ctx.build_plan
 
@@ -840,10 +841,8 @@ def build_dependency_metadata_tree() -> None:
                 resolution_ctx.result.status = ResolutionStatusType.SUCCESS
                 resolution_ctx.result.resolution_graph = resolution
             except ResolutionImpossible as e:
-                BuildEvent.make(
-                    StageType.PLAN,
-                    EventType.EXCEPTION,
-                    LevelType.DEBUG,
+                _audit(
+                    event_type=EventType.EXCEPTION,
                     substage="build_dependency_metadata_tree",
                     message=str(e))
                 res_result = resolution_ctx.result
@@ -855,18 +854,14 @@ def build_dependency_metadata_tree() -> None:
             current_resolution_context.reset(token)
 
 
-def init_compatibility_for_plan() -> CompatibilitySpec:
+def init_compatibility_for_plan() -> None:
     """
     Initializes and evaluates compatibility for the current build plan.
 
     This function retrieves the current build plan, loads the compatibility
     specification for the associated chubproject, and creates a compatibility
-    evaluator. The evaluator is then assigned to the build plan for later
-    use. Finally, the compatibility specification is returned.
-
-    Returns:
-        CompatibilitySpec: The compatibility specification corresponding to the
-        current build plan's project.
+    evaluator. The evaluator is then assigned to the build plan for later use.
+    Finally, the compatibility specification is returned.
     """
     build_plan = current_packaging_context.get().build_plan
     chubproject: ChubProject = build_plan.project
@@ -875,9 +870,8 @@ def init_compatibility_for_plan() -> CompatibilitySpec:
     build_plan.compatibility_spec = spec
     resolution_contexts = build_resolution_contexts(spec)
     build_plan.resolution_contexts = resolution_contexts
-    return spec
 
 
 def resolve_compatibility():
-    build_plan = current_packaging_context.get().build_plan
-    spec = init_compatibility_for_plan()
+    init_compatibility_for_plan()
+    proces_resolution_contexts()
